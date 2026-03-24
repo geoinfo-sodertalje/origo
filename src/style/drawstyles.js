@@ -498,8 +498,8 @@ function getVertexStyle({ geometry, scale = 1, highlightColor } = {}) {
 
   const vertexBaseStyle = new Style({
     image: new CircleStyle({
-      radius: 5 * scale,
-      fill: new Fill({ color: highlightColor || 'rgba(0, 153, 255, 0.54)' }),
+      radius: 6 * scale,
+      fill: new Fill({ color: highlightColor || 'rgb(0, 153, 255)' }),
       stroke: new Stroke({ color: 'rgb(255, 255, 255)', width: 2 * scale })
     })
   });
