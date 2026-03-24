@@ -471,15 +471,36 @@ function getSegmentLabelStyle({ line, projection, scale = 1, segmentStyles = [],
 
 function getVertexStyle({ geometry, scale = 1, highlightColor } = {}) {
   const geomType = geometry.getType();
-  const coords = geomType === 'Polygon'
-    ? geometry.getCoordinates()[0].slice(0, -1)
-    : geometry.getCoordinates();
+  let coords;
+  if (geomType === 'Polygon') {
+    coords = geometry.getCoordinates()[0].slice(0, -1);
+  } else if (geomType === 'MultiPolygon') {
+    coords = [];
+    geometry.getCoordinates().forEach(parts => {
+      parts.forEach(part => {
+        coords.push(...part.slice(0, -1));
+      });
+    });
+  } else if (geomType === 'LineString') {
+    coords = geometry.getCoordinates();
+  } else if (geomType === 'MultiLineString') {
+    coords = [];
+    geometry.getCoordinates().forEach(part => {
+      coords.push(...part);
+    });
+  } else if (geomType === 'Point') {
+    coords = [geometry.getCoordinates()];
+  } else if (geomType === 'MultiPoint') {
+    coords = geometry.getCoordinates();
+  } else {
+    coords = [];
+  }
 
   const vertexBaseStyle = new Style({
     image: new CircleStyle({
       radius: 5 * scale,
-      fill: new Fill({ color: highlightColor || 'rgba(0, 153, 255, 0.8)' }),
-      stroke: new Stroke({ color: 'rgba(255, 255, 255, 0.95)', width: 2 * scale })
+      fill: new Fill({ color: highlightColor || 'rgba(0, 153, 255, 0.54)' }),
+      stroke: new Stroke({ color: 'rgb(255, 255, 255)', width: 2 * scale })
     })
   });
 
