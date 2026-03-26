@@ -107,12 +107,33 @@ const Measure = function Measure({
     }
 
     if (geomType === 'Polygon' || geomType === 'LineString') {
-      const vertexStyles = drawStyles.getVertexStyle({
-        geometry,
-        scale: styleScale,
-        highlightColor
-      });
-      styles = styles.concat(vertexStyles);
+      let vertexGeometry = geometry;
+      // During drawing (drawType defined), exclude the cursor point (last coordinate)
+      if (typeof drawType !== 'undefined' && geomType === 'LineString') {
+        const coords = geometry.getCoordinates();
+        if (coords.length > 1) {
+          vertexGeometry = new LineString(coords.slice(0, -1));
+        } else {
+          vertexGeometry = null; // Don't show vertex for first point only
+        }
+      } else if (typeof drawType !== 'undefined' && geomType === 'Polygon') {
+        const coords = geometry.getCoordinates()[0];
+        if (coords.length > 2) {
+          // Exclude the cursor and the closing point
+          vertexGeometry = new Polygon([coords.slice(0, -1)]);
+        } else {
+          vertexGeometry = null;
+        }
+      }
+
+      if (vertexGeometry) {
+        const vertexStyles = drawStyles.getVertexStyle({
+          geometry: vertexGeometry,
+          scale: styleScale,
+          highlightColor
+        });
+        styles = styles.concat(vertexStyles);
+      }
     }
 
     if (
