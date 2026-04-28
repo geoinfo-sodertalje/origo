@@ -33,6 +33,9 @@ const Overlays = function Overlays(options) {
   });
   const nonGroupNames = ['background', 'none'];
   const rootGroupNames = ['root', '', null, undefined];
+  const searchHighlightCls = 'o-legend-search-highlight';
+  let searchHighlightTimeoutId;
+  let highlightedHeaderEl;
   let overlays;
 
   const themeGroups = ThemeGroups();
@@ -251,11 +254,73 @@ const Overlays = function Overlays(options) {
     return groupCmps;
   };
 
+  const revealGroup = function revealGroup(groupName, revealOptions = {}) {
+    const {
+      expand = false,
+      highlight = false
+    } = revealOptions;
+    const groupCmp = groupCmps.find((cmp) => cmp.name === groupName);
+    if (!groupCmp) {
+      return false;
+    }
+
+    const expandParents = function expandParents(cmp) {
+      if (!cmp) return;
+      if (cmp.parent) {
+        const parentCmp = groupCmps.find((group) => group.name === cmp.parent);
+        expandParents(parentCmp);
+      }
+      if (typeof cmp.expand === 'function') {
+        cmp.expand();
+      }
+    };
+
+    if (expand) {
+      expandParents(groupCmp);
+      overlaysCollapse.expand();
+    }
+
+    const slidenavEl = document.getElementById(slidenav.getId());
+    const isSecondaryVisible = slidenavEl && slidenavEl.classList.contains('slide-secondary');
+    if (isSecondaryVisible && slidenav.getState() === 'initial') {
+      slidenav.slideToMain();
+    }
+
+    const headerCmp = groupCmp.getHeaderCmp && groupCmp.getHeaderCmp();
+    const headerEl = headerCmp ? document.getElementById(headerCmp.getId()) : null;
+    if (headerEl) {
+      headerEl.scrollIntoView({ block: 'nearest' });
+      if (highlight) {
+        if (highlightedHeaderEl && highlightedHeaderEl !== headerEl) {
+          highlightedHeaderEl.classList.remove(searchHighlightCls);
+        }
+        if (searchHighlightTimeoutId) {
+          window.clearTimeout(searchHighlightTimeoutId);
+        }
+        headerEl.classList.remove(searchHighlightCls);
+        // Force reflow so repeated selection of the same group restarts the animation.
+        headerEl.offsetHeight; // eslint-disable-line no-unused-expressions
+        headerEl.classList.add(searchHighlightCls);
+        highlightedHeaderEl = headerEl;
+        searchHighlightTimeoutId = window.setTimeout(() => {
+          headerEl.classList.remove(searchHighlightCls);
+          if (highlightedHeaderEl === headerEl) {
+            highlightedHeaderEl = null;
+          }
+          searchHighlightTimeoutId = null;
+        }, 1300);
+      }
+    }
+
+    return true;
+  };
+
   return Component({
     onAddGroup,
     onChangeLayer,
     slidenav,
     getGroups,
+    revealGroup,
     getOverlays() {
       return readOverlays();
     },

@@ -1,0 +1,21 @@
+@use './ui/variables';
+
+@mixin default {
+  .o-legend-search-highlight {
+    animation: legend-search-highlight 1.2s ease-out;
+    background-color: rgba(0, 143, 245, 0.12);
+    box-shadow: inset 4px 0 0 0 variables.$primary-color;
+  }
+
+  @keyframes legend-search-highlight {
+    0% {
+      background-color: rgba(0, 143, 245, 0.26);
+      box-shadow: inset 6px 0 0 0 variables.$primary-color;
+    }
+
+    100% {
+      background-color: transparent;
+      box-shadow: inset 0 0 0 0 variables.$primary-color;
+    }
+  }
+}

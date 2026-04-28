@@ -24,6 +24,7 @@
 @use 'tooltip';
 @use 'rotate';
 @use 'mapmenu';
+@use 'legend';
 @use 'draw';
 @use 'editor';
 @use 'editor-toolbar';
@@ -76,6 +77,7 @@
     @include viewer.default;
     @include rotate.default;
     @include mapmenu.default;
+    @include legend.default;
     @include draw.default;
     @include editor.default;
     @include editor-toolbar.default;

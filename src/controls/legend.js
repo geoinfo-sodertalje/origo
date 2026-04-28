@@ -32,7 +32,9 @@ const Legend = function Legend(options = {}) {
     searchLayersMinLength = 2,
     searchLayersLimit = 10,
     searchLayersParameters = ['name', 'title'],
-    searchLayersPlaceholderText = localize('placeholderText')
+    searchLayersPlaceholderText = localize('placeholderText'),
+    searchLayersExpandGroupOnSelect = false,
+    searchLayersHighlightGroupOnSelect = false
   } = options;
 
   let {
@@ -388,24 +390,35 @@ const Legend = function Legend(options = {}) {
   function selectHandler(evt) {
     const label = evt.text.label;
     if (name) {
-      // Todo
       const layer = viewer.getLayer(label);
-      let layerGroup;
+      let selectedGroup;
+      let selectedGroupName;
       let isGroup;
       if (typeof layer !== 'undefined') {
-        layerGroup = layer.get('group');
+        selectedGroupName = layer.get('group');
+        selectedGroup = viewer.getGroup(selectedGroupName);
       } else {
-        layerGroup = viewer.getGroup(label);
+        selectedGroupName = label;
+        selectedGroup = viewer.getGroup(label);
         isGroup = true;
       }
-      const groupExclusive = (viewer.getGroup(layerGroup) && (viewer.getGroup(layerGroup).exclusive || viewer.getGroup(layerGroup).name === 'background'));
+      const groupExclusive = selectedGroup && (selectedGroup.exclusive || selectedGroup.name === 'background');
       if (groupExclusive) {
-        const layers = viewer.getLayersByProperty('group', layerGroup);
+        const layers = viewer.getLayersByProperty('group', selectedGroupName);
         layers.forEach(l => l.setVisible(false));
       }
       if (isGroup) {
-        const layers = viewer.getLayersByProperty('group', label);
-        if (layerGroup.exclusive) { // If group is exclusive only make the first layer visible.
+        if (visibleLayersControl && visibleLayersViewActive) {
+          setVisibleLayersViewActive(false);
+        }
+        if (overlaysCmp && typeof overlaysCmp.revealGroup === 'function') {
+          overlaysCmp.revealGroup(selectedGroupName, {
+            expand: searchLayersExpandGroupOnSelect,
+            highlight: searchLayersHighlightGroupOnSelect
+          });
+        }
+        const layers = viewer.getLayersByProperty('group', selectedGroupName);
+        if (selectedGroup && selectedGroup.exclusive) { // If group is exclusive only make the first layer visible.
           for (let i = 0; i < layers.length; i += 1) {
             if (i === 0) {
               if (!layers[i].get('secure')) {

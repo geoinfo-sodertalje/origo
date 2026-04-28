@@ -164,6 +164,14 @@ const Group = function Group(viewer, options = {}) {
     this.dispatch('add:group', groupCmp);
   };
 
+  const expand = function expand() {
+    collapse.expand();
+  };
+
+  const collapseGroup = function collapseGroup() {
+    collapse.collapse();
+  };
+
   const appendGroup = function appendGroup(targetCmp) {
     const html = dom.html(this.render());
     const targetEl = targetCmp.getEl();
@@ -277,6 +285,8 @@ const Group = function Group(viewer, options = {}) {
 
   return Component({
     addOverlay,
+    collapse: collapseGroup,
+    expand,
     getEl,
     getOverlayList,
     getVisible,
