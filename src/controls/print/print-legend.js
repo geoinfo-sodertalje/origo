@@ -56,7 +56,65 @@ const LayerRow = function LayerRow(options) {
    * @param {any} format valid mime type
    * @returns {string} A WMS getLegendGraphics request url string
    */
-  const createGetlegendGrapicUrl = (url, layerName, format) => `${url}?SERVICE=WMS&layer=${layerName}&format=${format}&version=1.1.1&request=getLegendGraphic&scale=401&legend_options=dpi:300`;
+  const createGetlegendGrapicUrl = (url, layerName, format, extraParams = {}) => {
+    const params = new URLSearchParams({
+      SERVICE: 'WMS',
+      layer: layerName,
+      format,
+      version: '1.1.1',
+      request: 'getLegendGraphic',
+      scale: '401',
+      legend_options: 'dpi:300',
+      ...extraParams
+    });
+    return `${url}?${params.toString()}`;
+  };
+
+  /**
+   * @param {string} url
+   * @param {Record<string, string>} params
+   * @returns {string}
+   */
+  const appendUrlParams = (url, params = {}) => {
+    if (!url || !params || !Object.keys(params).length) {
+      return url;
+    }
+    try {
+      const parsedUrl = new URL(url, window.location.href);
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && !parsedUrl.searchParams.has(key)) {
+          parsedUrl.searchParams.set(key, `${value}`);
+        }
+      });
+      return parsedUrl.toString();
+    } catch (error) {
+      console.warn(error);
+      return url;
+    }
+  };
+
+  /**
+   * @param {Layer} aLayer
+   * @returns {'Geoserver'|'QGIS'|'ArcGIS'|'Unknown'}
+   */
+  const getSourceType = (aLayer) => {
+    const mapSource = viewer.getMapSource();
+    const sourceName = aLayer.get('sourceName');
+    const sourceDef = mapSource[sourceName];
+    const sourceVendor = typeof sourceDef?.type === 'string' ? sourceDef.type : '';
+    const sourceUrl = (getOneUrl(aLayer) || '').toLowerCase();
+
+    if (sourceVendor === 'Geoserver' || sourceUrl.includes('geoserver')) {
+      return 'Geoserver';
+    }
+    if (sourceVendor === 'QGIS' || sourceUrl.includes('qgis')) {
+      return 'QGIS';
+    }
+    if (sourceVendor === 'ArcGIS') {
+      return 'ArcGIS';
+    }
+    return 'Unknown';
+  };
 
   /**
    * Returns the URL to the WMS legend in the specified format
@@ -68,14 +126,27 @@ const LayerRow = function LayerRow(options) {
   const getWMSLegendUrl = (aLayer, format) => {
     const url = getOneUrl(aLayer);
     const layerName = aLayer.get('name');
+    const sourceType = getSourceType(aLayer);
+    const legendParams = aLayer.get('legendParams') || {};
+    const qgisSizeParams = sourceType === 'QGIS'
+      ? {
+          WIDTH: legendParams.WIDTH || legendParams.SYMBOLWIDTH || '24',
+          HEIGHT: legendParams.HEIGHT || legendParams.SYMBOLHEIGHT || '24'
+        }
+      : {};
     const style = viewer.getStyle(aLayer.get('styleName'));
     if (style && style[0] && style[0][0] && style[0][0].icon) {
-      if (style[0][0].icon.src.includes('?')) {
-        return `${style[0][0].icon.src}&format=${format}`;
+      if (format === 'application/json' && style[0][0].icon.json) {
+        return appendUrlParams(style[0][0].icon.json, qgisSizeParams);
       }
-      return `${style[0][0].icon.src}?format=${format}`;
+      const formattedSrc = appendUrlParams(style[0][0].icon.src, qgisSizeParams);
+      if (style[0][0].icon.src.includes('?')) {
+        return `${formattedSrc}&format=${format}`;
+      }
+      return `${formattedSrc}?format=${format}`;
     }
-    return createGetlegendGrapicUrl(url, layerName, format);
+    const extraParams = sourceType === 'QGIS' ? qgisSizeParams : {};
+    return createGetlegendGrapicUrl(url, layerName, format, extraParams);
   };
 
   /**
@@ -118,6 +189,112 @@ const LayerRow = function LayerRow(options) {
   };
 
   /**
+   * Resolve icon URL returned by legend JSON to an absolute usable URL.
+   *
+   * @param {string} baseLegendUrl
+   * @param {string|undefined} iconCandidate
+   * @returns {string}
+   */
+  const resolveLegendIconUrl = (baseLegendUrl, iconCandidate) => {
+    if (!iconCandidate || typeof iconCandidate !== 'string') {
+      return '';
+    }
+    if (iconCandidate.startsWith('data:')) {
+      return iconCandidate;
+    }
+    if (iconCandidate.startsWith('base64,')) {
+      return `data:image/png;base64,${iconCandidate.slice(7)}`;
+    }
+    const looksLikeBase64 = /^[A-Za-z0-9+/]+={0,2}$/.test(iconCandidate) && iconCandidate.length > 64;
+    if (looksLikeBase64) {
+      return `data:image/png;base64,${iconCandidate}`;
+    }
+    try {
+      return new URL(iconCandidate, baseLegendUrl).toString();
+    } catch (error) {
+      console.warn(error);
+      return iconCandidate;
+    }
+  };
+
+  /**
+   * Normalize GeoServer and QGIS GetLegendGraphic JSON into a common structure.
+   *
+   * @param {any} json
+   * @returns {{backend: 'Geoserver'|'QGIS', layers: {layerName: string, rules: {name?: string, title?: string, icon?: string}[]}[]}|null}
+   */
+  const normalizeWMSLegendJSON = (json, legendJsonUrl = '') => {
+    if (json && Array.isArray(json.Legend)) {
+      return {
+        backend: 'Geoserver',
+        layers: json.Legend.map((legendLayer) => ({
+          layerName: legendLayer.layerName || '',
+          rules: Array.isArray(legendLayer.rules) ? legendLayer.rules : []
+        }))
+      };
+    }
+
+    if (json && Array.isArray(json.nodes)) {
+      const layers = [];
+      const mapSymbolToRule = (symbol = {}) => {
+        const rawIcon = typeof symbol.icon === 'string'
+          ? symbol.icon
+          : (symbol.icon && (symbol.icon.href || symbol.icon.url || symbol.icon.src || symbol.icon.base64)) || symbol.image || symbol.src || '';
+        const iconMimeType = symbol.contentType || symbol.mimetype || symbol.mimeType || symbol.icon?.contentType || 'image/png';
+        const iconValue = resolveLegendIconUrl(legendJsonUrl, rawIcon);
+        const finalIconValue = (iconValue.startsWith('data:image/png;base64,') && iconMimeType !== 'image/png')
+          ? iconValue.replace('data:image/png;base64,', `data:${iconMimeType};base64,`)
+          : iconValue;
+        return {
+          name: symbol.name || symbol.rule || '',
+          title: symbol.title || symbol.label || symbol.name || '',
+          icon: finalIconValue
+        };
+      };
+
+      const collectNode = (node, inheritedLayerName = '') => {
+        if (!node || typeof node !== 'object') {
+          return;
+        }
+
+        const layerName = node.layerName || node.name || node.title || inheritedLayerName || layer.get('id') || layer.get('name');
+        const symbols = Array.isArray(node.symbols) ? node.symbols : [];
+
+        if (symbols.length > 0) {
+          layers.push({
+            layerName,
+            rules: symbols.map(mapSymbolToRule)
+          });
+        } else if (node.icon) {
+          layers.push({
+            layerName,
+            rules: [mapSymbolToRule(node)]
+          });
+        }
+
+        const childNodes = [];
+        if (Array.isArray(node.nodes)) {
+          childNodes.push(...node.nodes);
+        }
+        if (Array.isArray(node.children)) {
+          childNodes.push(...node.children);
+        }
+        childNodes.forEach((childNode) => collectNode(childNode, layerName));
+      };
+
+      json.nodes.forEach((node) => collectNode(node));
+      if (layers.length > 0) {
+        return {
+          backend: 'QGIS',
+          layers
+        };
+      }
+    }
+
+    return null;
+  };
+
+  /**
    * @param {string} title
    * @param {string[]} children
    * @returns {string}
@@ -127,7 +304,7 @@ const LayerRow = function LayerRow(options) {
       <div class="padding-x-small grow no-select overflow-hidden">${title}</div>
     </div>
     <div class="padding-left">
-      <ul>${children.join('\n')}</ul>
+      <ul style="margin-top:0.2rem;">${children.join('\n')}</ul>
     </div>`;
 
   /**
@@ -137,7 +314,7 @@ const LayerRow = function LayerRow(options) {
    */
   const getTitleWithIcon = (title, icon) => `
     <div class="flex row">
-      <div class="grey-lightest round compact icon-small light relative no-shrink legend-icon" style="height: 1.5rem; width: 1.5rem;">
+      <div class="grey-lightest ${icon.includes('<img') ? '' : 'round '}compact icon-small light relative no-shrink legend-icon" style="height: ${icon.includes('<img') ? '1.9rem' : '1.65rem'}; width: ${icon.includes('<img') ? '1.9rem' : '1.65rem'}; overflow: visible;">
         <span class="icon">
           ${icon}
         </span>
@@ -152,12 +329,14 @@ const LayerRow = function LayerRow(options) {
    * @returns {string}
    */
   const getListItem = (title, icon, iconLink = false) => {
-    const iconElement = iconLink ? `<img src="${icon}" style="width:100%;height:100%;object-fit:contain;" title="" alt="${title}"/>` : icon;
+    const iconElement = iconLink ? `<img src="${icon}" style="display:block;width:auto;height:100%;max-width:none;object-fit:contain;" title="" alt="${title}"/>` : icon;
+    const iconSize = iconLink ? '1.9rem' : '1.65rem';
+    const rowPadding = iconLink ? '0.2rem 0' : '0';
     return `
-      <li class="flex row align-center padding-left padding-right item">
+      <li class="flex row align-center padding-left padding-right item" style="padding:${rowPadding};">
         <div class="flex column">
-          <div class="flex row">
-            <div class="grey-lightest round compact icon-small light relative no-shrink legend-icon" style="height: 1.5rem; width: 1.5rem;">
+          <div class="flex row" style="gap:0.35rem; align-items:center;">
+            <div class="grey-lightest ${iconLink ? '' : 'round '}compact icon-small light relative no-shrink legend-icon" style="height: ${iconSize}; width: ${iconSize}; overflow: visible;">
               ${iconElement}
             </div>
             <div class="padding-left-small grow no-select overflow-hidden">${title}</div>
@@ -194,6 +373,67 @@ const LayerRow = function LayerRow(options) {
   };
 
   /**
+   * @param {string} title
+   * @param {string} imageUrl
+   * @returns {string}
+   */
+  const getTitleWithImage = (title, imageUrl) => `
+    <div class="flex row">
+      <div class="padding-x-small grow no-select overflow-hidden">${title}</div>
+    </div>
+    <div class="padding-left">
+      <img src="${imageUrl}" alt="${title}" style="max-height:1.5rem;width:auto;object-fit:contain;" />
+    </div>`;
+
+  /**
+   * For GROUP layers we always use configured style for print legend,
+   * including extendedLegend image definitions.
+   *
+   * @param {string} title
+   * @param {any[][]} style
+   * @returns {string}
+   */
+  const getGroupStyleContent = async (title, style) => {
+    const extendedLegendItem = style
+      .flat()
+      .find((styleItem) => styleItem.extendedLegend && styleItem.icon && styleItem.icon.src);
+
+    if (extendedLegendItem) {
+      const iconSrc = extendedLegendItem.icon.src;
+      const iconJson = extendedLegendItem.icon.json
+        || (iconSrc.includes('?') ? `${iconSrc}&format=application/json` : `${iconSrc}?format=application/json`);
+      const shouldTryJson = !!extendedLegendItem.icon.json || /getlegendgraphic|service=wms/i.test(iconSrc);
+
+      if (shouldTryJson) {
+        const json = await getLegendGraphicJSON(iconJson);
+        const normalizedLegend = normalizeWMSLegendJSON(json, iconJson);
+        if (normalizedLegend) {
+          const rules = [];
+          normalizedLegend.layers.forEach((legendLayer) => {
+            legendLayer.rules.forEach((legendRule, index) => {
+              let iconUrl = iconSrc;
+              if (normalizedLegend.backend === 'QGIS') {
+                iconUrl = legendRule.icon || iconSrc;
+              } else if (legendLayer.rules.length > 1 && legendRule.name) {
+                iconUrl = `${iconSrc}${iconSrc.includes('?') ? '&' : '?'}rule=${legendRule.name}`;
+              }
+              const rowTitle = legendRule.title || legendRule.name || index + 1;
+              rules.push(getListItem(rowTitle, iconUrl, true));
+            });
+          });
+          if (rules.length) {
+            return getTitleWithChildren(title, rules);
+          }
+        }
+      }
+
+      return getTitleWithImage(title, iconSrc);
+    }
+
+    return getStyleContent(title, style);
+  };
+
+  /**
    * Return the HTML for a legend based for a WMS layer
    *
    * @param {string} title
@@ -201,7 +441,8 @@ const LayerRow = function LayerRow(options) {
    */
   const getWMSJSONContent = async (title) => {
     const getLegendGraphicUrl = getWMSLegendUrl(layer, 'image/png');
-    const json = await getLegendGraphicJSON(getWMSLegendUrl(layer, 'application/json'));
+    const jsonLegendUrl = getWMSLegendUrl(layer, 'application/json');
+    const json = await getLegendGraphicJSON(jsonLegendUrl);
 
     if (!json) {
       return `
@@ -212,24 +453,41 @@ const LayerRow = function LayerRow(options) {
           <img src="${getLegendGraphicUrl}" alt="${title}" />
         </div>`;
     }
+    const normalizedLegend = normalizeWMSLegendJSON(json, jsonLegendUrl);
+    if (!normalizedLegend) {
+      return `
+        <div class="flex row">
+          <div class="padding-x-small grow no-select overflow-hidden">${title}</div>
+        </div>
+        <div class="padding-left">
+          <img src="${getLegendGraphicUrl}" alt="${title}" />
+        </div>`;
+    }
+
     // Handle the simple one first. One layer, one rule
-    if (json.Legend.length === 1 && json.Legend[0].rules.length <= 1) {
-      const icon = `<img class="cover" src="${getLegendGraphicUrl}"  alt="${title}"/>`;
+    if (normalizedLegend.layers.length === 1 && normalizedLegend.layers[0].rules.length <= 1) {
+      const singleRule = normalizedLegend.layers[0].rules[0];
+      const iconUrl = normalizedLegend.backend === 'QGIS' && singleRule?.icon ? singleRule.icon : getLegendGraphicUrl;
+      const icon = `<img src="${iconUrl}" style="display:block;width:auto;height:100%;max-width:none;object-fit:contain;" alt="${title}"/>`;
       return getTitleWithIcon(title, icon);
     }
 
     const thematicStyle = (layer.get('thematicStyling') === true) ? viewer.getStyle(layer.get('styleName')) : undefined;
+    // thematic is populated lazily by the interactive legend (setIcon). If not yet loaded, default to showing all rules.
+    const thematicLoaded = thematicStyle && Array.isArray(thematicStyle[0]?.thematic) && thematicStyle[0].thematic.length > 0;
     const rules = [];
     let index = 0;
     const layerName = layer.get('id');
-    const isLayerGroup = json.Legend.length > 1;
+    const isLayerGroup = normalizedLegend.layers.length > 1;
     // Loop all layers in json response. Usually there is only one, but Layer Groups have several.
-    json.Legend.forEach(currLayer => {
+    normalizedLegend.layers.forEach(currLayer => {
       let currLayerName = currLayer.layerName;
       currLayer.rules.forEach(currRule => {
-        if (!(layer.get('thematicStyling')) || thematicStyle[0]?.thematic[index]?.visible) {
+        if (!layer.get('thematicStyling') || !thematicLoaded || thematicStyle[0].thematic[index]?.visible) {
           let layerImageUrl;
-          if (isLayerGroup) {
+          if (normalizedLegend.backend === 'QGIS') {
+            layerImageUrl = currRule.icon || getLegendGraphicUrl;
+          } else if (isLayerGroup) {
             // This is layer group and the contained layer is most likely not known to us,
             // so we can't treat is as an Origo layer.
             // Generate a request and hope that the server has a layer by that name.
@@ -256,7 +514,7 @@ const LayerRow = function LayerRow(options) {
           // Add specific rule if necessary. If there is only one rule there is no need (in fact it will probably break as most
           // styles using only one rule will not have a named rule). This is to handle Layer Groups without rules in some of the contained
           // layer's style
-          if (currLayer.rules.length > 1) {
+          if (normalizedLegend.backend === 'Geoserver' && currLayer.rules.length > 1) {
             ruleImageUrl += `&rule=${currRule.name}`;
           }
           const rowTitle = currRule.title ? currRule.title : index + 1;
@@ -265,6 +523,11 @@ const LayerRow = function LayerRow(options) {
         index += 1;
       });
     });
+
+    if (!rules.length) {
+      const icon = `<img src="${getLegendGraphicUrl}" style="display:block;width:auto;height:100%;max-width:none;object-fit:contain;" alt="${title}"/>`;
+      return getTitleWithIcon(title, icon);
+    }
 
     return getTitleWithChildren(title, rules);
   };
@@ -294,11 +557,11 @@ const LayerRow = function LayerRow(options) {
       const title = layer.get('title') || 'Titel saknas';
       let content = '';
       const style = viewer.getStyle(layer.get('styleName'));
-      if (style && style[0] && (!style[0][0].extendedLegend)) {
-        content = getStyleContent(title, style);
+      const lType = (layer.get('type') || '').toUpperCase();
+      if (style && style[0] && (!style[0][0].extendedLegend || lType === 'GROUP')) {
+        content = lType === 'GROUP' ? await getGroupStyleContent(title, style) : getStyleContent(title, style);
       } else {
         content = getTitleWithIcon(title, '');
-        const lType = layer.get('type');
         if ((lType && lType.includes('AGS')) || /\/arcgis\/services\/[^/]+\/[^/]+\/MapServer\/WMSServer/.test(getOneUrl(layer))) {
           content = await getAGSJSONContent(title, layer.get('id'));
         } else if (lType && lType.includes('WMS')) {

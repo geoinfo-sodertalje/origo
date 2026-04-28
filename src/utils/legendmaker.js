@@ -189,32 +189,313 @@ export const renderSvgIcon = function renderSvgIcon(styleRule, {
 };
 
 export const renderLegendItem = function renderLegendItem(svgIcon, label = '') {
-  const style = `style="width: ${size}px; height: ${size}px;"`;
+  const isImageIcon = typeof svgIcon === 'string' && svgIcon.includes('<img');
+  const iconSize = size;
+  const style = `style="width: ${iconSize}px; height: ${iconSize}px; overflow: visible; display:flex; align-items:center; justify-content:center;"`;
+  const iconCls = isImageIcon ? '' : 'icon-small round';
+  const iconHtml = isImageIcon
+    ? svgIcon.replace('class="cover"', 'class="contain"')
+    : svgIcon;
   const legendCmp = El({ cls: 'flex row align-center padding-y-smallest',
-    innerHTML: `<div ${style} class="icon-small round">${svgIcon}</div><div class="text-smaller padding-left-small">${label}</div>` });
+    innerHTML: `<div ${style} class="${iconCls}">${iconHtml}</div><div class="text-smaller padding-left-small">${label}</div>` });
   return legendCmp;
 };
-function updateLayer(layer, viewer) {
+
+function getThematicWmsSourceType(layer, viewer) {
+  const sourceName = layer.get('sourceName');
+  const sourceDef = viewer.getMapSource()?.[sourceName];
+  if (typeof sourceDef?.type === 'string') {
+    return sourceDef.type;
+  }
+  return '';
+}
+
+function getThematicTargetLayer(layer) {
+  if (!layer) {
+    return null;
+  }
+  if (layer.get('type') !== 'GROUP') {
+    return layer;
+  }
+  const childLayers = layer.getLayers?.().getArray?.() || [];
+  return childLayers.find(child => child.get('type') === 'WMS' && child.get('thematicStyling') === true) || layer;
+}
+
+function getLegendRequestUrl(url, extraParams = {}) {
+  try {
+    const parsedUrl = new URL(url, window.location.href);
+    Object.entries(extraParams).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        parsedUrl.searchParams.set(key, `${value}`);
+      }
+    });
+    return parsedUrl;
+  } catch (error) {
+    console.warn(error);
+    return null;
+  }
+}
+
+function getThematicLegendUrls(src, sourceType, layer) {
+  const baseUrl = src?.icon?.json || src?.icon?.src;
+  if (!baseUrl) {
+    return { json: null, png: null };
+  }
+  const configuredShowRuleDetails = layer?.get('legendParams')?.SHOWRULEDETAILS;
+  const useShowRuleDetails = sourceType === 'QGIS' && (typeof configuredShowRuleDetails === 'undefined'
+    || `${configuredShowRuleDetails}`.toUpperCase() !== 'FALSE');
+
+  const json = getLegendRequestUrl(baseUrl, useShowRuleDetails
+    ? { SHOWRULEDETAILS: 'TRUE', FORMAT: 'application/json' }
+    : { FORMAT: 'application/json' });
+  const png = getLegendRequestUrl(baseUrl, sourceType === 'QGIS'
+    ? (useShowRuleDetails ? { SHOWRULEDETAILS: 'TRUE', FORMAT: 'image/png' } : { FORMAT: 'image/png' })
+    : { FORMAT: 'image/png' });
+  return { json, png };
+}
+
+function shouldSkipThematicRequests(layer, thematicArr = []) {
+  if (layer?.get('thematicFilterEnabled') === false) {
+    return true;
+  }
+
+  if (layer?.get('allowComplexThematicFilter') === true) {
+    return false;
+  }
+
+  // Guard against advanced/catch-all rule expressions that tend to cause 403/404.
+  return thematicArr.some((theme) => {
+    const filter = `${theme?.filter || ''}`;
+    return filter.length > 700 || /^\s*NOT\s*\(\s*\(/i.test(filter);
+  });
+}
+
+function buildQgisFilter(layer, thematicArr = []) {
+  const layerNameParam = layer.get('id') || layer.get('name');
+  const layerNames = layerNameParam.split(',').map(name => name.trim()).filter(Boolean);
+  const filterableThemes = thematicArr.filter(theme => theme.filter);
+  const isGroupLayer = layer.get('type') === 'GROUP';
+
+  if (!thematicArr.length || !layerNames.length) {
+    return null;
+  }
+
+  const normalizeFilterExpr = expr => `${expr}`.replace(/\s+/g, ' ').trim();
+  const normalizeForSecurity = (expr) => {
+    const source = `${expr || ''}`;
+    let inQuote = false;
+    let out = '';
+
+    for (let i = 0; i < source.length; i += 1) {
+      const char = source[i];
+      if (char === "'") {
+        inQuote = !inQuote;
+        out += char;
+      } else if (!inQuote && (char === '(' || char === ')')) {
+        out += ` ${char} `;
+      } else {
+        out += char;
+      }
+    }
+
+    return out
+      .replace(/\b(and|or|is|not|in|null)\b/gi, kw => kw.toUpperCase())
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+  const isLikelySecurityRejected = expr => /;/.test(`${expr || ''}`);
+  const isHugeCatchAllExpr = (expr) => {
+    const normalized = normalizeFilterExpr(expr);
+    return normalized.length > 700 && /^NOT\s*\(\s*\(/i.test(normalized);
+  };
+
+  const visibleByLayer = {};
+  const layersWithRules = new Set();
+
+  filterableThemes.forEach((theme) => {
+    const rawFilter = `${theme.filter}`.trim();
+    if (!rawFilter) {
+      return;
+    }
+
+    let targetLayer = theme._layerName;
+    if (targetLayer && !layerNames.includes(targetLayer)) {
+      targetLayer = null;
+    }
+
+    if (!targetLayer) {
+      for (const layerName of layerNames) {
+        if (rawFilter.startsWith(`${layerName}:`)) {
+          targetLayer = layerName;
+          break;
+        }
+      }
+    }
+
+    if (!targetLayer) {
+      targetLayer = layerNames[0];
+    }
+
+    const cleanFilter = rawFilter.startsWith(`${targetLayer}:`) ? rawFilter.slice(targetLayer.length + 1) : rawFilter;
+    const preparedFilter = normalizeForSecurity(isGroupLayer ? normalizeFilterExpr(cleanFilter) : cleanFilter);
+
+    // Drop only clearly invalid clauses instead of sending a full FILTER that the server rejects.
+    if (isLikelySecurityRejected(preparedFilter)) {
+      return;
+    }
+
+    // GROUP-specific guard for very large catch-all terms that often break GetMap requests.
+    if (isGroupLayer && isHugeCatchAllExpr(preparedFilter)) {
+      return;
+    }
+
+    layersWithRules.add(targetLayer);
+    if (!visibleByLayer[targetLayer]) {
+      visibleByLayer[targetLayer] = [];
+    }
+    if (theme.visible) {
+      visibleByLayer[targetLayer].push(preparedFilter);
+    }
+  });
+
+  const filterParts = [];
+  layerNames.forEach(layerName => {
+    const layerThemes = thematicArr.filter(theme => theme._layerName === layerName);
+    const layerNoFilterThemes = layerThemes.filter(theme => !theme.filter);
+    const hideLayerByNoFilterToggle =
+      layerNoFilterThemes.length > 0 && layerNoFilterThemes.every(theme => theme.visible === false);
+
+    if (hideLayerByNoFilterToggle) {
+      filterParts.push(`${layerName}:1 = 0`);
+      return;
+    }
+
+    if (layersWithRules.has(layerName)) {
+      const layerFilters = visibleByLayer[layerName] || [];
+      if (layerFilters.length > 0) {
+        const combined = layerFilters.join(' OR ');
+        filterParts.push(`${layerName}:${combined}`);
+      } else {
+        filterParts.push(`${layerName}:1 = 0`);
+      }
+    } else {
+      filterParts.push(`${layerName}:1 = 1`);
+    }
+  });
+
+  return filterParts.join(';');
+}
+
+function updateLayer(layer, viewer, thematicOverride) {
   const styleName = layer.get('styleName');
   const style = viewer.getStyle(styleName);
-  if (style[0] && style[0].thematic) {
-    const thematicArr = style[0].thematic;
+  const thematicArr = thematicOverride || style?.[0]?.thematic;
+  if (Array.isArray(thematicArr) && thematicArr.length > 0) {
+    if (shouldSkipThematicRequests(layer, thematicArr)) {
+      return;
+    }
+
+    if (layer.get('type') === 'GROUP') {
+      const childLayers = layer.getLayers?.().getArray?.() || [];
+      const thematicWmsChildren = childLayers.filter((childLayer) => childLayer.get('type') === 'WMS' && childLayer.get('thematicStyling') === true);
+
+      // Single thematic WMS child in GROUP: treat thematic rows as class filters on that child.
+      if (thematicWmsChildren.length === 1) {
+        updateLayer(thematicWmsChildren[0], viewer, thematicArr);
+        return;
+      }
+
+      // Multi thematic children in GROUP: thematic rows act as child-layer visibility toggles.
+      const visibilityByLayer = {};
+
+      const normalizeName = value => `${value || ''}`.trim().toLowerCase();
+      const foldName = (value) => normalizeName(value)
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9:]+/g, '');
+
+      const findChildLayerName = (rawLayerName, { strictOnly = false } = {}) => {
+        const candidate = normalizeName(rawLayerName);
+        const foldedCandidate = foldName(rawLayerName);
+        if (!candidate) {
+          return null;
+        }
+        const matched = childLayers.find((childLayer) => {
+          const childName = normalizeName(childLayer.get('name'));
+          const childId = normalizeName(childLayer.get('id'));
+          const childTitle = normalizeName(childLayer.get('title'));
+          const foldedChildName = foldName(childLayer.get('name'));
+          const foldedChildId = foldName(childLayer.get('id'));
+          const foldedChildTitle = foldName(childLayer.get('title'));
+
+          if (candidate === childName
+            || candidate === childId
+            || childName.endsWith(`:${candidate}`)
+            || candidate.endsWith(`:${childName}`)
+            || foldedCandidate === foldedChildName
+            || foldedCandidate === foldedChildId) {
+            return true;
+          }
+
+          if (strictOnly) {
+            return false;
+          }
+
+          return candidate === childName
+            || candidate === childTitle
+            || foldedCandidate === foldedChildTitle;
+        });
+        return matched ? matched.get('name') : null;
+      };
+
+      thematicArr.forEach(theme => {
+        // Prefer machine identifiers (_layerName/name) and only then fallback to human label/title.
+        const layerName = findChildLayerName(theme._layerName, { strictOnly: true })
+          || findChildLayerName(theme.name, { strictOnly: true })
+          || findChildLayerName(theme._layerName)
+          || findChildLayerName(theme.label)
+          || findChildLayerName(theme.name);
+        if (!layerName) {
+          return;
+        }
+        if (typeof visibilityByLayer[layerName] === 'undefined') {
+          visibilityByLayer[layerName] = false;
+        }
+        visibilityByLayer[layerName] = visibilityByLayer[layerName] || theme.visible !== false;
+      });
+
+      childLayers.forEach((childLayer) => {
+        const childName = childLayer.get('name');
+        if (Object.prototype.hasOwnProperty.call(visibilityByLayer, childName)) {
+          childLayer.setVisible(visibilityByLayer[childName]);
+        }
+      });
+      return;
+    }
+    const source = layer.getSource();
+    const sourceType = getThematicWmsSourceType(layer, viewer);
+    const isQgisWms = layer.get('type') === 'WMS' && sourceType === 'QGIS';
     // Check if any theme is not visible, otherwise remove filter
     const checkArr = obj => obj.visible === false;
     if (thematicArr.some(checkArr)) {
-      let filterStr = '';
-      thematicArr.forEach(theme => {
-        if (theme.visible) {
-          filterStr += filterStr === '' ? '' : ' OR ';
-          filterStr += theme.filter;
+      if (isQgisWms) {
+        const filterValue = buildQgisFilter(layer, thematicArr);
+        source.updateParams({ FILTER: filterValue, CQL_FILTER: null });
+      } else {
+        let filterStr = '';
+        thematicArr.forEach(theme => {
+          if (theme.visible && theme.filter) {
+            filterStr += filterStr === '' ? '' : ' OR ';
+            filterStr += theme.filter;
+          }
+        });
+        if (filterStr === '') {
+          filterStr = "IN ('')";
         }
-      });
-      if (filterStr === '') {
-        filterStr = "IN ('')";
+        source.updateParams({ CQL_FILTER: filterStr, FILTER: null });
       }
-      layer.getSource().updateParams({ CQL_FILTER: filterStr });
     } else {
-      layer.getSource().updateParams({ CQL_FILTER: null });
+      source.updateParams({ CQL_FILTER: null, FILTER: null });
     }
   }
 }
@@ -229,28 +510,148 @@ async function setIcon(src, cmp, styleRules, layer, viewer, clickable) {
     if (!thematicPromises.has(styleName)) {
       const promise = (async () => {
         style[0].thematic = [];
-        const paramsString = src.icon.json;
-        const searchParams = new URLSearchParams(paramsString);
-        const response = await fetch(src.icon.json);
-        const jsonData = await response.json();
-        jsonData.Legend[0].rules.forEach(row => {
-          searchParams.set('FORMAT', 'image/png');
-          searchParams.set('RULE', row.name);
-          const imgUrl = decodeURIComponent(searchParams.toString());
-          if (typeof row.filter !== 'undefined') {
-            style[0].thematic.push({
-              image: { src: imgUrl },
-              filter: row.filter,
-              name: row.name,
-              label: row.title || row.name,
-              visible: row.visible !== false
-            });
-            if (activeThemes && hasThemeLegend) {
-              const lastItem = style[0].thematic[style[0].thematic.length - 1];
-              lastItem.visible = activeThemes.includes(row.name || row.title);
-            }
+        const sourceType = getThematicWmsSourceType(layer, viewer);
+        const legendUrls = getThematicLegendUrls(src, sourceType, layer);
+        const legendJsonUrl = legendUrls.json;
+        const legendPngUrl = legendUrls.png;
+
+        if (!legendJsonUrl) {
+          viewer.setStyle(styleName, style);
+          updateLayer(layer, viewer);
+          return;
+        }
+
+        let jsonData;
+        try {
+          const response = await fetch(legendJsonUrl.toString());
+          const contentType = response.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            jsonData = await response.json();
+          } else {
+            const body = await response.text();
+            jsonData = JSON.parse(body);
           }
-        });
+        } catch (error) {
+          console.warn('Could not load thematic legend JSON', error);
+          viewer.setStyle(styleName, style);
+          updateLayer(layer, viewer);
+          return;
+        }
+
+        if (jsonData.Legend && Array.isArray(jsonData.Legend[0]?.rules)) {
+          // GeoServer: Legend[].rules
+          jsonData.Legend[0].rules.forEach(row => {
+            const ruleUrl = getLegendRequestUrl(src.icon.json, { FORMAT: 'image/png', RULE: row.name });
+            const imgUrl = ruleUrl ? decodeURIComponent(ruleUrl.toString()) : '';
+            if (typeof row.filter !== 'undefined') {
+              style[0].thematic.push({
+                image: { src: imgUrl },
+                filter: row.filter,
+                name: row.name,
+                label: row.title || row.name,
+                visible: row.visible !== false
+              });
+              if (activeThemes && hasThemeLegend) {
+                const lastItem = style[0].thematic[style[0].thematic.length - 1];
+                lastItem.visible = activeThemes.includes(row.name || row.title);
+              }
+            }
+          });
+        } else if (jsonData.nodes && Array.isArray(jsonData.nodes)) {
+          // QGIS Server: nodes[].symbols
+          const collectSymbols = (nodes, parentLayerName = null, parentFilterExpr = null) => {
+            const result = [];
+            nodes.forEach(node => {
+              // If this node has a name and looks like a layer (has symbols/children), use it as the layer context
+              const currentLayerName = (node.name && (Array.isArray(node.symbols) || Array.isArray(node.children))) 
+                ? node.name 
+                : parentLayerName;
+              const currentFilterExpr = node.filter || node.expression || parentFilterExpr;
+              
+              if (node.icon || node.rule || node.expression || node.filter) {
+                // Attach layer name to symbol for filter building
+                result.push({ ...node, _layerName: currentLayerName, _filterExpr: currentFilterExpr });
+              }
+              if (Array.isArray(node.symbols)) {
+                node.symbols.forEach(symbol => {
+                  result.push({ ...symbol, _layerName: currentLayerName, _filterExpr: symbol.filter || symbol.expression || currentFilterExpr });
+                });
+              }
+              if (Array.isArray(node.nodes)) {
+                result.push(...collectSymbols(node.nodes, currentLayerName, currentFilterExpr));
+              }
+              if (Array.isArray(node.children)) {
+                result.push(...collectSymbols(node.children, currentLayerName, currentFilterExpr));
+              }
+            });
+            return result;
+          };
+
+          const symbols = collectSymbols(jsonData.nodes);
+          const getSafeFilterExpr = (symbol) => {
+            const directExpr = symbol.filter || symbol.expression || symbol._filterExpr;
+            if (directExpr && `${directExpr}`.trim() !== '') {
+              return `${directExpr}`.trim();
+            }
+            if (typeof symbol.rule !== 'string') {
+              return undefined;
+            }
+            const ruleExpr = symbol.rule.trim();
+            if (!ruleExpr) {
+              return undefined;
+            }
+            // Reject incomplete fragments such as "IS NULL" that are missing a field name.
+            if (/^IS\s+(NOT\s+)?NULL$/i.test(ruleExpr)) {
+              return undefined;
+            }
+            // Accept only expression-like rules.
+            const isExpressionLike = /("[^"]+"|[A-Za-z_][A-Za-z0-9_\.]*)\s*(=|<>|!=|<=|>=|<|>|\bIN\b|\bLIKE\b|\bBETWEEN\b|\bIS\b)/i.test(ruleExpr);
+            return isExpressionLike ? ruleExpr : undefined;
+          };
+          symbols.forEach(symbol => {
+            // Only real expression fields should affect map filtering.
+            // Keep legend rows even when a symbol has no filter expression.
+            const filterExpr = getSafeFilterExpr(symbol);
+            
+            let imgSrc;
+            if (symbol.icon) {
+              // Pre-rendered base64 icon
+              const raw = symbol.icon;
+              if (raw.startsWith('data:')) {
+                imgSrc = raw;
+              } else if (raw.startsWith('base64,')) {
+                imgSrc = `data:image/png;base64,${raw.slice(7)}`;
+              } else if (/^[A-Za-z0-9+/]{64,}={0,2}$/.test(raw)) {
+                imgSrc = `data:image/png;base64,${raw}`;
+              } else {
+                imgSrc = raw;
+              }
+            } else if (symbol.rule) {
+              // Fallback only when no inline icon exists.
+              const ruleUrl = getLegendRequestUrl(legendPngUrl ? legendPngUrl.toString() : src.icon.json, { RULE: symbol.rule });
+              imgSrc = ruleUrl ? decodeURIComponent(ruleUrl.toString()) : '';
+            }
+            if (imgSrc) {
+              const thematicItem = {
+                image: { src: imgSrc },
+                filter: filterExpr,
+                name: symbol.rule || symbol.name || symbol.title || '',
+                label: symbol.title || symbol.label || symbol.name || '',
+                visible: symbol.visible !== false
+              };
+              // Preserve layer name for multi-layer filter building
+              if (symbol._layerName) {
+                thematicItem._layerName = symbol._layerName;
+              }
+              style[0].thematic.push(thematicItem);
+              if (activeThemes && hasThemeLegend) {
+                const lastItem = style[0].thematic[style[0].thematic.length - 1];
+                lastItem.visible = activeThemes.includes(lastItem.name || lastItem.label);
+              }
+            }
+          });
+        }
+
         viewer.setStyle(styleName, style);
         updateLayer(layer, viewer);
       })();
@@ -317,16 +718,24 @@ export const Legend = function Legend({
 } = {}) {
   const noLegend = 'Teckenförklaring saknas';
   if (Array.isArray(styleRules)) {
+    const isGroupLayer = layer.get('type') === 'GROUP';
+    const thematicTargetLayer = getThematicTargetLayer(layer);
+    const thematicWmsChildren = isGroupLayer
+      ? (layer.getLayers?.().getArray?.() || []).filter((childLayer) => childLayer.get('type') === 'WMS' && childLayer.get('thematicStyling') === true)
+      : [];
+    // Single thematic child GROUP should use child legend data (includes rule expressions).
+    // Multi-child GROUP should use GROUP legend data for layer-level toggling.
+    const thematicLegendLayer = (isGroupLayer && thematicWmsChildren.length !== 1) ? layer : thematicTargetLayer;
     let styleName;
-    const layerType = layer.get('type');
+    const layerType = thematicTargetLayer?.get('type') || layer.get('type');
     if (layer) {
-      styleName = layer.get('styleName');
+      styleName = thematicLegendLayer?.get('styleName') || thematicTargetLayer?.get('styleName') || layer.get('styleName');
     }
-    const thematicStyling = layer.get('thematicStyling');
-    const activeThemes = layer.get('activeThemes');
+    const thematicStyling = thematicLegendLayer?.get('thematicStyling') === true || thematicTargetLayer?.get('thematicStyling') === true;
+    const activeThemes = thematicLegendLayer?.get('activeThemes') || thematicTargetLayer?.get('activeThemes') || layer.get('activeThemes');
     if (activeThemes) {
       const style = viewer.getStyles()[styleName];
-      if (layer.get('type') !== 'WMS') {
+      if (layerType !== 'WMS') {
         for (let i = 0; i < style.length; i += 1) {
           const combinedStr = style[i][0].id?.toString() || style[i][0].label?.toString();
           style[i][0].visible = activeThemes.includes(combinedStr);
@@ -342,7 +751,7 @@ export const Legend = function Legend({
           const label = labelItem.label || '';
           const elCmps = [];
           if (extendedLegendItem && thematicStyling) {
-            elCmps.push(renderExtendedThematicLegendItem(extendedLegendItem, styleRules, layer, viewer, clickable));
+            elCmps.push(renderExtendedThematicLegendItem(extendedLegendItem, styleRules, thematicLegendLayer, viewer, clickable));
             cmps = elCmps;
           } else if (extendedLegendItem && extendedLegendItem.icon) {
             elCmps.push(renderExtendedLegendItem(extendedLegendItem));
