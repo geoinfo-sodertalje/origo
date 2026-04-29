@@ -248,9 +248,11 @@ function getThematicLegendUrls(src, sourceType, layer) {
   const json = getLegendRequestUrl(baseUrl, useShowRuleDetails
     ? { SHOWRULEDETAILS: 'TRUE', FORMAT: 'application/json' }
     : { FORMAT: 'application/json' });
-  const png = getLegendRequestUrl(baseUrl, sourceType === 'QGIS'
-    ? (useShowRuleDetails ? { SHOWRULEDETAILS: 'TRUE', FORMAT: 'image/png' } : { FORMAT: 'image/png' })
-    : { FORMAT: 'image/png' });
+  let pngParams = { FORMAT: 'image/png' };
+  if (sourceType === 'QGIS' && useShowRuleDetails) {
+    pngParams = { SHOWRULEDETAILS: 'TRUE', FORMAT: 'image/png' };
+  }
+  const png = getLegendRequestUrl(baseUrl, pngParams);
   return { json, png };
 }
 
@@ -318,18 +320,13 @@ function buildQgisFilter(layer, thematicArr = []) {
       return;
     }
 
-    let targetLayer = theme._layerName;
+    let targetLayer = theme.layerNameMeta;
     if (targetLayer && !layerNames.includes(targetLayer)) {
       targetLayer = null;
     }
 
     if (!targetLayer) {
-      for (const layerName of layerNames) {
-        if (rawFilter.startsWith(`${layerName}:`)) {
-          targetLayer = layerName;
-          break;
-        }
-      }
+      targetLayer = layerNames.find(layerName => rawFilter.startsWith(`${layerName}:`)) || null;
     }
 
     if (!targetLayer) {
@@ -360,10 +357,10 @@ function buildQgisFilter(layer, thematicArr = []) {
 
   const filterParts = [];
   layerNames.forEach(layerName => {
-    const layerThemes = thematicArr.filter(theme => theme._layerName === layerName);
+    const layerThemes = thematicArr.filter(theme => theme.layerNameMeta === layerName);
     const layerNoFilterThemes = layerThemes.filter(theme => !theme.filter);
-    const hideLayerByNoFilterToggle =
-      layerNoFilterThemes.length > 0 && layerNoFilterThemes.every(theme => theme.visible === false);
+    const hideLayerByNoFilterToggle = layerNoFilterThemes.length > 0
+      && layerNoFilterThemes.every(theme => theme.visible === false);
 
     if (hideLayerByNoFilterToggle) {
       filterParts.push(`${layerName}:1 = 0`);
@@ -450,9 +447,10 @@ function updateLayer(layer, viewer, thematicOverride) {
 
       thematicArr.forEach(theme => {
         // Prefer machine identifiers (_layerName/name) and only then fallback to human label/title.
-        const layerName = findChildLayerName(theme._layerName, { strictOnly: true })
+        const thematicLayerName = theme.layerNameMeta;
+        const layerName = findChildLayerName(thematicLayerName, { strictOnly: true })
           || findChildLayerName(theme.name, { strictOnly: true })
-          || findChildLayerName(theme._layerName)
+          || findChildLayerName(thematicLayerName)
           || findChildLayerName(theme.label)
           || findChildLayerName(theme.name);
         if (!layerName) {
@@ -563,18 +561,22 @@ async function setIcon(src, cmp, styleRules, layer, viewer, clickable) {
             const result = [];
             nodes.forEach(node => {
               // If this node has a name and looks like a layer (has symbols/children), use it as the layer context
-              const currentLayerName = (node.name && (Array.isArray(node.symbols) || Array.isArray(node.children))) 
-                ? node.name 
+              const currentLayerName = (node.name && (Array.isArray(node.symbols) || Array.isArray(node.children)))
+                ? node.name
                 : parentLayerName;
               const currentFilterExpr = node.filter || node.expression || parentFilterExpr;
-              
+
               if (node.icon || node.rule || node.expression || node.filter) {
                 // Attach layer name to symbol for filter building
-                result.push({ ...node, _layerName: currentLayerName, _filterExpr: currentFilterExpr });
+                result.push({ ...node, layerNameMeta: currentLayerName, filterExprMeta: currentFilterExpr });
               }
               if (Array.isArray(node.symbols)) {
                 node.symbols.forEach(symbol => {
-                  result.push({ ...symbol, _layerName: currentLayerName, _filterExpr: symbol.filter || symbol.expression || currentFilterExpr });
+                  result.push({
+                    ...symbol,
+                    layerNameMeta: currentLayerName,
+                    filterExprMeta: symbol.filter || symbol.expression || currentFilterExpr
+                  });
                 });
               }
               if (Array.isArray(node.nodes)) {
@@ -589,7 +591,7 @@ async function setIcon(src, cmp, styleRules, layer, viewer, clickable) {
 
           const symbols = collectSymbols(jsonData.nodes);
           const getSafeFilterExpr = (symbol) => {
-            const directExpr = symbol.filter || symbol.expression || symbol._filterExpr;
+            const directExpr = symbol.filter || symbol.expression || symbol.filterExprMeta;
             if (directExpr && `${directExpr}`.trim() !== '') {
               return `${directExpr}`.trim();
             }
@@ -605,14 +607,14 @@ async function setIcon(src, cmp, styleRules, layer, viewer, clickable) {
               return undefined;
             }
             // Accept only expression-like rules.
-            const isExpressionLike = /("[^"]+"|[A-Za-z_][A-Za-z0-9_\.]*)\s*(=|<>|!=|<=|>=|<|>|\bIN\b|\bLIKE\b|\bBETWEEN\b|\bIS\b)/i.test(ruleExpr);
+            const isExpressionLike = /("[^"]+"|[A-Za-z_][A-Za-z0-9_.]*)\s*(=|<>|!=|<=|>=|<|>|\bIN\b|\bLIKE\b|\bBETWEEN\b|\bIS\b)/i.test(ruleExpr);
             return isExpressionLike ? ruleExpr : undefined;
           };
           symbols.forEach(symbol => {
             // Only real expression fields should affect map filtering.
             // Keep legend rows even when a symbol has no filter expression.
             const filterExpr = getSafeFilterExpr(symbol);
-            
+
             let imgSrc;
             if (symbol.icon) {
               // Pre-rendered base64 icon
@@ -640,8 +642,9 @@ async function setIcon(src, cmp, styleRules, layer, viewer, clickable) {
                 visible: symbol.visible !== false
               };
               // Preserve layer name for multi-layer filter building
-              if (symbol._layerName) {
-                thematicItem._layerName = symbol._layerName;
+              const symbolLayerName = symbol.layerNameMeta;
+              if (symbolLayerName) {
+                thematicItem.layerNameMeta = symbolLayerName;
               }
               style[0].thematic.push(thematicItem);
               if (activeThemes && hasThemeLegend) {

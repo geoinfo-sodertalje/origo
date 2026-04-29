@@ -130,9 +130,9 @@ const LayerRow = function LayerRow(options) {
     const legendParams = aLayer.get('legendParams') || {};
     const qgisSizeParams = sourceType === 'QGIS'
       ? {
-          WIDTH: legendParams.WIDTH || legendParams.SYMBOLWIDTH || '24',
-          HEIGHT: legendParams.HEIGHT || legendParams.SYMBOLHEIGHT || '24'
-        }
+        WIDTH: legendParams.WIDTH || legendParams.SYMBOLWIDTH || '24',
+        HEIGHT: legendParams.HEIGHT || legendParams.SYMBOLHEIGHT || '24'
+      }
       : {};
     const style = viewer.getStyle(aLayer.get('styleName'));
     if (style && style[0] && style[0][0] && style[0][0].icon) {
