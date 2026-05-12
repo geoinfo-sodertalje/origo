@@ -68,6 +68,7 @@ const Legend = function Legend(options = {}) {
   let layerSwitcherCmp;
   let isExpanded;
   let toolsCmp;
+  let ignoreNextSearchListClose = false;
   const cls = `${clsSettings} control bottom-right box flex row o-legend`.trim();
   const style = dom.createStyle(Object.assign({}, { width: 'auto', overflow: 'unset' }, styleSettings));
 
@@ -384,6 +385,13 @@ const Legend = function Legend(options = {}) {
     }
   };
 
+  function clearSearchField() {
+    const searchFieldEl = document.getElementsByClassName('o-search-layer-field')[0];
+    if (searchFieldEl) {
+      searchFieldEl.value = '';
+    }
+  }
+
   /** There are several different ways to handle selected search result.
  */
 
@@ -451,16 +459,9 @@ const Legend = function Legend(options = {}) {
         }, 0);
       }
       // Set a flag to ignore the next click for the global handler
-      window._ignoreNextSearchListClose = true;
+      ignoreNextSearchListClose = true;
     } else {
       console.error(localize('selectHandlerError'));
-    }
-  }
-
-  function clearSearchField() {
-    const searchFieldEl = document.getElementsByClassName('o-search-layer-field')[0];
-    if (searchFieldEl) {
-      searchFieldEl.value = '';
     }
   }
 
@@ -498,10 +499,10 @@ const Legend = function Legend(options = {}) {
       });
 
       // Add a global click handler to close the search result list if clicking outside
-      document.addEventListener('mousedown', function handleSearchListClose(e) {
+      document.addEventListener('mousedown', (e) => {
         // If a result was just selected, ignore this click
-        if (window._ignoreNextSearchListClose) {
-          window._ignoreNextSearchListClose = false;
+        if (ignoreNextSearchListClose) {
+          ignoreNextSearchListClose = false;
           return;
         }
         const input = document.getElementsByClassName('o-search-layer-field')[0];

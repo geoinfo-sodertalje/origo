@@ -38,6 +38,14 @@ const Overlays = function Overlays(options) {
   let highlightedSearchEl;
   let overlays;
 
+  const themeGroups = ThemeGroups();
+  const rootGroup = GroupList({ viewer }, true);
+
+  const groupCmps = viewer.getGroups().reduce((acc, group) => {
+    if (nonGroupNames.includes(group.name)) return acc;
+    return acc.concat(Group(viewer, { ...group, localization }));
+  }, []);
+
   const findOverlayCmpByLayerName = function findOverlayCmpByLayerName(layerName) {
     if (!layerName) return null;
 
@@ -67,14 +75,6 @@ const Overlays = function Overlays(options) {
     }
     return null;
   };
-
-  const themeGroups = ThemeGroups();
-  const rootGroup = GroupList({ viewer }, true);
-
-  const groupCmps = viewer.getGroups().reduce((acc, group) => {
-    if (nonGroupNames.includes(group.name)) return acc;
-    return acc.concat(Group(viewer, { ...group, localization }));
-  }, []);
 
   groupCmps.forEach((groupCmp) => {
     if (groupCmp.type === 'group') {
