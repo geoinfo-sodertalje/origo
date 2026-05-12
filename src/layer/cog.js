@@ -1,5 +1,5 @@
 import GeoTIFFSource from 'ol/source/GeoTIFF';
-import webgltile from './webgltile.js';
+import webgltile from './webgltile';
 
 function createSource(sourceInfo, sourceOptions, geoTIFFOptions = {}) {
   return new GeoTIFFSource(Object.assign({}, geoTIFFOptions, {
