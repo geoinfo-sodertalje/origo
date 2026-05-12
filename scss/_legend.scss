@@ -2,7 +2,7 @@
 
 @mixin default {
   .o-legend-search-highlight {
-    animation: legend-search-highlight 1.2s ease-out;
+    animation: legend-search-highlight 3s ease-out;
     background-color: rgba(0, 143, 245, 0.12);
     box-shadow: inset 4px 0 0 0 variables.$primary-color;
   }

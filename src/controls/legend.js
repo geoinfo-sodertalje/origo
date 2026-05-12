@@ -397,6 +397,14 @@ const Legend = function Legend(options = {}) {
       if (typeof layer !== 'undefined') {
         selectedGroupName = layer.get('group');
         selectedGroup = viewer.getGroup(selectedGroupName);
+        // Always expand the group in the legend when a layer is selected
+        if (overlaysCmp && typeof overlaysCmp.revealGroupInLegend === 'function') {
+          overlaysCmp.revealGroupInLegend(selectedGroupName, {
+            expand: searchLayersExpandGroupOnSelect,
+            highlight: searchLayersHighlightGroupOnSelect,
+            highlightLayerName: label
+          });
+        }
       } else {
         selectedGroupName = label;
         selectedGroup = viewer.getGroup(label);
@@ -411,8 +419,8 @@ const Legend = function Legend(options = {}) {
         if (visibleLayersControl && visibleLayersViewActive) {
           setVisibleLayersViewActive(false);
         }
-        if (overlaysCmp && typeof overlaysCmp.revealGroup === 'function') {
-          overlaysCmp.revealGroup(selectedGroupName, {
+        if (overlaysCmp && typeof overlaysCmp.revealGroupInLegend === 'function') {
+          overlaysCmp.revealGroupInLegend(selectedGroupName, {
             expand: searchLayersExpandGroupOnSelect,
             highlight: searchLayersHighlightGroupOnSelect
           });
@@ -431,17 +439,34 @@ const Legend = function Legend(options = {}) {
         } else {
           layers.forEach(l => { if (!l.get('secure')) { l.setVisible(true); } });
         }
+        // Optionally clear the input if you want to clear after group selection:
+        // document.getElementsByClassName('o-search-layer-field')[0].value = '';
       } else if (!layer.get('secure')) {
         layer.setVisible(true);
       }
-      document.getElementsByClassName('o-search-layer-field')[0].value = '';
+      clearSearchField();
+      if (awesomplete) {
+        window.setTimeout(() => {
+          awesomplete.open();
+        }, 0);
+      }
+      // Set a flag to ignore the next click for the global handler
+      window._ignoreNextSearchListClose = true;
     } else {
       console.error(localize('selectHandlerError'));
     }
   }
 
+  function clearSearchField() {
+    const searchFieldEl = document.getElementsByClassName('o-search-layer-field')[0];
+    if (searchFieldEl) {
+      searchFieldEl.value = '';
+    }
+  }
+
   function clearSearchResults() {
     awesomplete.list = [];
+    clearSearchField();
   }
 
   function onClearSearch() {
@@ -455,7 +480,11 @@ const Legend = function Legend(options = {}) {
 
   function bindUIActions() {
     if (searchLayersControl) {
-      document.getElementById(`${layerSearchInput.getId()}`).addEventListener('awesomplete-selectcomplete', selectHandler);
+      document.getElementById(`${layerSearchInput.getId()}`).addEventListener('awesomplete-select', (evt) => {
+        // Prevent Awesomplete default behavior that writes selected result into input.
+        evt.preventDefault();
+        selectHandler(evt);
+      });
 
       document.getElementsByClassName('o-search-layer-field')[0].addEventListener('input', () => {
         if (document.getElementsByClassName('o-search-layer-field')[0].value && document.getElementById(`${layerSearchInput.getId()}`).classList.contains('o-search-false')) {
@@ -465,6 +494,22 @@ const Legend = function Legend(options = {}) {
         } else if (!(document.getElementsByClassName('o-search-layer-field')[0].value) && document.getElementById(`${layerSearchInput.getId()}`).classList.contains('o-search-true')) {
           document.getElementById(`${layerSearchInput.getId()}`).classList.remove('o-search-true');
           document.getElementById(`${layerSearchInput.getId()}`).classList.add('o-search-false');
+        }
+      });
+
+      // Add a global click handler to close the search result list if clicking outside
+      document.addEventListener('mousedown', function handleSearchListClose(e) {
+        // If a result was just selected, ignore this click
+        if (window._ignoreNextSearchListClose) {
+          window._ignoreNextSearchListClose = false;
+          return;
+        }
+        const input = document.getElementsByClassName('o-search-layer-field')[0];
+        const awesompleteUl = awesomplete && awesomplete.ul;
+        if (!input || !awesompleteUl) return;
+        // If click is outside both the input and the result list, clear results
+        if (!input.contains(e.target) && !awesompleteUl.contains(e.target)) {
+          clearSearchResults();
         }
       });
     }
@@ -570,6 +615,9 @@ const Legend = function Legend(options = {}) {
         sort: false,
         maxItems: searchLayersLimit,
         item: renderList,
+        replace() {
+          // Keep the typed search text; do not replace input with selected suggestion.
+        },
         filter(suggestion, userInput) {
           const { value: suggestionValue } = suggestion;
           return suggestionValue.toLowerCase().includes(userInput.toLowerCase()) ? suggestionValue : false;

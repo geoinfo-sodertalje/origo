@@ -35,8 +35,38 @@ const Overlays = function Overlays(options) {
   const rootGroupNames = ['root', '', null, undefined];
   const searchHighlightCls = 'o-legend-search-highlight';
   let searchHighlightTimeoutId;
-  let highlightedHeaderEl;
+  let highlightedSearchEl;
   let overlays;
+
+  const findOverlayCmpByLayerName = function findOverlayCmpByLayerName(layerName) {
+    if (!layerName) return null;
+
+    const searchInGroupCmp = function searchInGroupCmp(groupCmp) {
+      if (!groupCmp || typeof groupCmp.getOverlayList !== 'function') return null;
+      const overlayList = groupCmp.getOverlayList();
+      const overlayCmp = overlayList.getOverlays().find((overlay) => (
+        (typeof overlay.getLayer === 'function' && overlay.getLayer().get('name') === layerName)
+      ));
+      if (overlayCmp) return overlayCmp;
+      const subgroups = overlayList.getGroups();
+      for (let i = 0; i < subgroups.length; i += 1) {
+        const found = searchInGroupCmp(subgroups[i]);
+        if (found) return found;
+      }
+      return null;
+    };
+
+    const rootOverlayCmp = rootGroup.getOverlays().find((overlay) => (
+      (typeof overlay.getLayer === 'function' && overlay.getLayer().get('name') === layerName)
+    ));
+    if (rootOverlayCmp) return rootOverlayCmp;
+
+    for (let i = 0; i < groupCmps.length; i += 1) {
+      const found = searchInGroupCmp(groupCmps[i]);
+      if (found) return found;
+    }
+    return null;
+  };
 
   const themeGroups = ThemeGroups();
   const rootGroup = GroupList({ viewer }, true);
@@ -254,10 +284,11 @@ const Overlays = function Overlays(options) {
     return groupCmps;
   };
 
-  const revealGroup = function revealGroup(groupName, revealOptions = {}) {
+  const revealGroupInLegend = function revealGroupInLegend(groupName, revealOptions = {}) {
     const {
       expand = false,
-      highlight = false
+      highlight = false,
+      highlightLayerName
     } = revealOptions;
     const groupCmp = groupCmps.find((cmp) => cmp.name === groupName);
     if (!groupCmp) {
@@ -288,24 +319,34 @@ const Overlays = function Overlays(options) {
 
     const headerCmp = groupCmp.getHeaderCmp && groupCmp.getHeaderCmp();
     const headerEl = headerCmp ? document.getElementById(headerCmp.getId()) : null;
-    if (headerEl) {
-      headerEl.scrollIntoView({ block: 'nearest' });
+    const overlayCmp = findOverlayCmpByLayerName(highlightLayerName);
+    const overlayEl = overlayCmp ? document.getElementById(overlayCmp.getId()) : null;
+    const targetEl = overlayEl || headerEl;
+    if (targetEl) {
+      const scrollBlock = expand ? 'start' : 'nearest';
+      targetEl.scrollIntoView({ block: scrollBlock });
+      if (expand) {
+        // Ensure the expanded content ends up in view after layout updates.
+        window.requestAnimationFrame(() => {
+          targetEl.scrollIntoView({ block: 'start' });
+        });
+      }
       if (highlight) {
-        if (highlightedHeaderEl && highlightedHeaderEl !== headerEl) {
-          highlightedHeaderEl.classList.remove(searchHighlightCls);
+        if (highlightedSearchEl && highlightedSearchEl !== targetEl) {
+          highlightedSearchEl.classList.remove(searchHighlightCls);
         }
         if (searchHighlightTimeoutId) {
           window.clearTimeout(searchHighlightTimeoutId);
         }
-        headerEl.classList.remove(searchHighlightCls);
+        targetEl.classList.remove(searchHighlightCls);
         // Force reflow so repeated selection of the same group restarts the animation.
-        headerEl.offsetHeight; // eslint-disable-line no-unused-expressions
-        headerEl.classList.add(searchHighlightCls);
-        highlightedHeaderEl = headerEl;
+        targetEl.offsetHeight; // eslint-disable-line no-unused-expressions
+        targetEl.classList.add(searchHighlightCls);
+        highlightedSearchEl = targetEl;
         searchHighlightTimeoutId = window.setTimeout(() => {
-          headerEl.classList.remove(searchHighlightCls);
-          if (highlightedHeaderEl === headerEl) {
-            highlightedHeaderEl = null;
+          targetEl.classList.remove(searchHighlightCls);
+          if (highlightedSearchEl === targetEl) {
+            highlightedSearchEl = null;
           }
           searchHighlightTimeoutId = null;
         }, 1300);
@@ -320,7 +361,7 @@ const Overlays = function Overlays(options) {
     onChangeLayer,
     slidenav,
     getGroups,
-    revealGroup,
+    revealGroupInLegend,
     getOverlays() {
       return readOverlays();
     },
