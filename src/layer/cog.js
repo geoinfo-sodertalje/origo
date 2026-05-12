@@ -1,5 +1,5 @@
 import GeoTIFFSource from 'ol/source/GeoTIFF';
-import WebGLTile from 'ol/layer/WebGLTile';
+import webgltile from './webgltile.js';
 
 function createSource(sourceInfo, sourceOptions, geoTIFFOptions = {}) {
   return new GeoTIFFSource(Object.assign({}, geoTIFFOptions, {
@@ -91,8 +91,7 @@ const cog = function cog(layerOptions, viewer) {
   });
 
   const cogSource = createSource(sourceInfo, sourceOptions, geoTIFFOptions);
-  const options = Object.assign({}, cogOptions, { source: cogSource });
-  return new WebGLTile(options);
+  return webgltile(cogOptions, cogSource);
 };
 
 export default cog;
