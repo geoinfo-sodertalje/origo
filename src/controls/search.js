@@ -38,8 +38,7 @@ const Search = function Search(options = {}) {
     maxZoomLevel,
     limit,
     hintText,
-    minLength,
-    searchDelay = 400
+    minLength
   } = options;
 
   const {
