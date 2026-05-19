@@ -50,7 +50,8 @@ const Search = function Search(options = {}) {
     searchlistOptions = {},
     queryType,
     suppressDialog,
-    localization
+    localization,
+    searchDelay = 400
   } = options;
 
   function localize(key) {
@@ -617,6 +618,7 @@ const Search = function Search(options = {}) {
           }
         }
       } else {
+        clearTimeout(debounceTimer);
         switch (searchlistPlacement) {
           case 'floating':
           case 'left':
