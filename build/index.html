@@ -15,10 +15,10 @@
 <body>
 <div id="app-wrapper">
 </div>
-<script src="js/origo.min.js"></script>
-<script type="text/javascript">
+<script type="module">
 	//Init origo
-		var origo = Origo('index.json');
+	import Origo from './origo.js';
+	window.origo = Origo('index.json');
 </script>
 </body>
 </html>

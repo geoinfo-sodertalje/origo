@@ -42,7 +42,8 @@
       "error",
       {
         "devDependencies": [
-          "tasks/**"
+          "vite.config.ts",
+          "scripts/**"
         ],
         "optionalDependencies": false
       }

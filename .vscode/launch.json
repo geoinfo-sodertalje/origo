@@ -18,19 +18,6 @@
       "type": "pwa-node"
     },
     {
-      "name": "Start dev server with linter",
-      "request": "launch",
-      "runtimeArgs": [
-        "run-script",
-        "lint-run"
-      ],
-      "runtimeExecutable": "npm",
-      "skipFiles": [
-        "<node_internals>/**"
-      ],
-      "type": "pwa-node"
-    },
-    {
       "type": "chrome",
       "request": "launch",
       "name": "Launch Chrome",

@@ -20,13 +20,23 @@ big-bang rewrites. At every intermediate step the app must remain shippable. End
   the internal TypedEmitter for API-level events. Lit components dispatched
   events must set `composed: true`.
 - `on()` on any internal emitter returns an unsubscribe function.
-- Do not change the build/deploy contract: `npm run build` must still
-  produce `build/` with the same layout it has today — `js/origo.min.js`
-  and `js/origo.js` (from `dist/origo.min.js`), `css/`, `examples/`,
-  `data/`, `index.html`, `index.json`, `img/`, per
-  `tasks/webpack.copy.js`. (There is no `origo-build.py` or other deploy
-  script in this repo — that reference in an earlier version of this file
-  didn't match anything on disk.)
+- Do not change the build/deploy contract beyond what's recorded below as
+  a deliberate, disclosed deviation. **Update, Phase 1 retro:** the bundle
+  format changed on purpose, with explicit user sign-off, mid-Phase-1 —
+  `build/` now ships `origo.js`/`origo.min.js` as real ES modules
+  (`export default Origo`) at the `build/` root, not the old global-var
+  IIFE at `js/origo.min.js`/`js/origo.js`. `index.html` and
+  `examples/*.html` were updated to `<script type="module">` +
+  `import Origo from './origo.js'` (or `'../origo.js'` from `examples/`)
+  to match. **This breaks anyone currently consuming `origo.min.js` as a
+  classic script with a global `Origo` var** — that includes whatever the
+  committed `build/` in git history was already serving to real
+  consumers. Chosen anyway because a single `index.html` working
+  identically in dev (Vite ESM) and in the built output was judged more
+  valuable than preserving the old global-var contract. If this needs
+  reverting or dual-shipping (ESM + a separate global-var build) later,
+  see `vite.config.ts` — Vite's lib mode supports multiple `formats` in
+  one build, that path was deliberately not taken here.
 - If execution diverges from the approved plan, stop and re-enter Plan Mode.
 
 ## Architecture
@@ -35,16 +45,15 @@ Interface contracts (Layer, Legend, Plugin API) are specified in
 document; if reality forces a deviation, surface it — do not improvise.
 
 ## Migration phases (one plan/session each, merge after every phase)
-1. Build tooling: Vite + tsconfig (`allowJs: true`), everything compiles,
-   deploy artifact unchanged. Acceptance check: Vite output must match the
-   current webpack contract exactly — single bundle, no code-splitting
-   (`chunkLoading: false` today), global var named `Origo`
-   (`library: { type: 'var', export: 'default', name: 'Origo' }` in
-   `tasks/webpack.prod.js`/`webpack.copy.js`), all deps (`ol`, `proj4`, ...)
-   bundled in, none externalized. Also decide explicitly whether the
-   `core-js/stable` polyfill entry (`tasks/webpack.common.js`) is still
-   needed for the supported browser targets, since Vite won't add it for
-   free.
+1. **Done.** Build tooling: Vite + tsconfig (`allowJs: true`), everything
+   compiles. Single bundle, no code-splitting, all deps (`ol`, `proj4`,
+   ...) bundled in, none externalized — matches the original acceptance
+   bar. `core-js/stable` was dropped (no declared browser-support floor
+   existed anywhere in the project). One deviation from the original bar:
+   output format changed from global-var IIFE to ES module — see the hard
+   rule above for why and what it breaks. `tasks/webpack.*.js` and
+   `jsconfig.json` removed; `vite.config.ts`/`tsconfig.json` are the new
+   source of truth.
 2. Interface files only: `layer.ts`, `legend.ts`, `plugin.ts`,
    `typed-emitter.ts`. Pure types + minimal runtime.
 3. Layer adapter wrapping the existing layer factory output.

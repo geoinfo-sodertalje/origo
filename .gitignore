@@ -1,5 +1,6 @@
 build-dev
 dist
+.vite-tmp
 css/style.css
 css/style.css.map
 node_modules

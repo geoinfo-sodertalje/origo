@@ -10,10 +10,10 @@
 <body>
 <div id="app-wrapper">
 </div>
-<script src="../js/origo.js"></script>
-<script type="text/javascript">
+<script type="module">
 	//Init origo
-  Origo('examples/editor.json', {
+	import Origo from '../origo.js';
+	Origo('examples/editor.json', {
 		baseUrl: '../'
 	});
 </script>
