@@ -14,7 +14,9 @@ const entry = fileURLToPath(new URL('./origo.js', import.meta.url));
 // can use `<script type="module">` identically in dev and in the built
 // output. Anyone currently consuming origo.min.js as a classic script via
 // a global `Origo` var will need to switch to `import Origo from
-// './origo.min.js'`.
+// './js/origo.min.js'`. Output path itself (build/js/) is unchanged -
+// see scripts/copy-build-assets.mjs for how the flat repo-root import
+// used in dev gets rewritten to js/ for the built copies.
 export default defineConfig(({ command }) => {
   if (command === 'serve') {
     return {

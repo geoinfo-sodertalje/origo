@@ -22,21 +22,26 @@ big-bang rewrites. At every intermediate step the app must remain shippable. End
 - `on()` on any internal emitter returns an unsubscribe function.
 - Do not change the build/deploy contract beyond what's recorded below as
   a deliberate, disclosed deviation. **Update, Phase 1 retro:** the bundle
-  format changed on purpose, with explicit user sign-off, mid-Phase-1 —
-  `build/` now ships `origo.js`/`origo.min.js` as real ES modules
-  (`export default Origo`) at the `build/` root, not the old global-var
-  IIFE at `js/origo.min.js`/`js/origo.js`. `index.html` and
-  `examples/*.html` were updated to `<script type="module">` +
-  `import Origo from './origo.js'` (or `'../origo.js'` from `examples/`)
-  to match. **This breaks anyone currently consuming `origo.min.js` as a
+  *format* changed on purpose, with explicit user sign-off, mid-Phase-1 —
+  `build/js/origo.js`/`origo.min.js` are now real ES modules
+  (`export default Origo`), not the old global-var IIFE. The *path* is
+  unchanged (`build/js/`, restored after an initial attempt flattened it
+  to `build/` root — that broke a real external deploy config hardcoding
+  `js/origo.min.js`, caught only after the fact; see `scripts/
+  copy-build-assets.mjs`). Root `index.html`/`examples/*.html` (the dev
+  entries) import the flat `./origo.js`/`../origo.js` from repo root,
+  since that's where Vite's dev server actually serves the source; the
+  copies placed in `build/`/`build-dev/` get their import rewritten to
+  `./js/origo.js` at copy time to match the restored path. **The format
+  change still breaks anyone currently consuming `origo.min.js` as a
   classic script with a global `Origo` var** — that includes whatever the
   committed `build/` in git history was already serving to real
-  consumers. Chosen anyway because a single `index.html` working
-  identically in dev (Vite ESM) and in the built output was judged more
-  valuable than preserving the old global-var contract. If this needs
-  reverting or dual-shipping (ESM + a separate global-var build) later,
-  see `vite.config.ts` — Vite's lib mode supports multiple `formats` in
-  one build, that path was deliberately not taken here.
+  consumers; only the path regression got caught and fixed, the format
+  break is still live and still needs that external config updated to
+  `<script type="module">` + `import Origo from './js/origo.min.js'`.
+  If dual-shipping (ESM + a separate global-var build) turns out to be
+  needed, see `vite.config.ts` — Vite's lib mode supports multiple
+  `formats` in one build, that path was deliberately not taken here.
 - If execution diverges from the approved plan, stop and re-enter Plan Mode.
 
 ## Architecture
