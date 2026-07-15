@@ -73,8 +73,46 @@ document; if reality forces a deviation, surface it — do not improvise.
    `grep -o 'from"\.[^"]*"' dist/origo.min.js` (or the unminified
    equivalent with `from '...'`) must return nothing — any relative
    import means a chunk got split out again.
-2. Interface files only: `layer.ts`, `legend.ts`, `plugin.ts`,
-   `typed-emitter.ts`. Pure types + minimal runtime.
+2. **Done.** Interface files only: `src/api/layer.ts`, `src/api/legend.ts`,
+   `src/api/plugin.ts`, `src/api/typed-emitter.ts`. Pure types + minimal
+   runtime, per `docs/architecture.md`. No adapters, nothing wired into
+   `origo.js`'s bundle graph — these files aren't imported from anywhere
+   yet, so the shipped app is unaffected this phase.
+
+   **Location:** `src/api/`, not bare `src/*.ts` — a root-level `layer.ts`
+   would have collided with the existing `src/layer.js` (the current layer
+   factory, imported by `src/viewer.js`). `src/api/` keeps the new typed
+   contracts isolated and matches architecture.md's own naming for the
+   plugin-facing surface (`OrigoApi`, `LayerApi`, `UiApi`). Future adapters
+   (Phases 3-5) should default to living here too unless a phase's plan
+   says otherwise.
+
+   **Fixed a type bug in architecture.md's own code sample:** the doc's
+   `Layer.on()` forwarded its `fn` (typed to receive the raw event payload)
+   straight into `TypedEmitter.on()` (which expects a callback receiving a
+   `CustomEvent<T>`) — fails under `strict: true`. Implemented as intended
+   (ergonomic public API: callers get the raw payload) by unwrapping
+   `.detail` inside `Layer.on()` before calling `fn`.
+
+   **Plugin API placeholders:** `MapApi`, `LayerApi`, `UiApi`, `ViewerConfig`
+   are referenced in architecture.md's `OrigoApi` but never defined there —
+   consistent with the doc's own note that the Plugin API's runtime
+   discovery/loading mechanism is an open design question for Phase 5.
+   `src/api/plugin.ts` stubs all four as minimal, explicitly-commented
+   "provisional — full shape designed in Phase 5" placeholders so the file
+   type-checks without pre-empting that design pass. `ViewerConfig` in
+   particular has no existing typed shape to draw from — today's real
+   config is an untyped plain object assembled ad hoc in `origo.js`'s
+   `Origo()` factory.
+
+   **Lint:** verified empirically that `npm run lint` (ESLint 8.57,
+   `airbnb-base`, no `@typescript-eslint` installed) already silently
+   ignores `.ts` files when scanning a directory — ESLint 8's default
+   `--ext` is `.js` only, confirmed by testing both a `.ts`-only directory
+   (errors "no files matching pattern", irrelevant since `src/` also has
+   hundreds of `.js` files) and a mixed `.js`+`.ts` directory (clean exit,
+   `.ts` silently skipped, no crash). No lint script/config changes needed;
+   `.ts` correctness is `npx tsc --noEmit` only, same as Phase 1.
 3. Layer adapter wrapping the existing layer factory output.
 4. Legend adapter wrapping the existing legend component
    (`src/controls/legend.js`, 800+ lines, plus `src/controls/legend/*`
