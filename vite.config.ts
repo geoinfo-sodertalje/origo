@@ -40,7 +40,17 @@ export default defineConfig(({ command }) => {
       // dist/ also holds sass output (style.css, style.css.map) - never wipe it
       emptyOutDir: false,
       minify: minify ? 'terser' : false,
-      sourcemap: true
+      sourcemap: true,
+      rollupOptions: {
+        output: {
+          // ol's GeoTIFF/COG codec support uses dynamic import() internally;
+          // without this, Rolldown splits those into separate chunk files
+          // (rolldown-runtime-*.mjs, pako.esm-*.mjs, etc.) instead of a
+          // single self-contained bundle - violates the "single bundle, no
+          // code-splitting" requirement (see CLAUDE.md Phase 1).
+          inlineDynamicImports: true
+        }
+      }
     }
   };
 });

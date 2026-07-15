@@ -51,14 +51,28 @@ document; if reality forces a deviation, surface it — do not improvise.
 
 ## Migration phases (one plan/session each, merge after every phase)
 1. **Done.** Build tooling: Vite + tsconfig (`allowJs: true`), everything
-   compiles. Single bundle, no code-splitting, all deps (`ol`, `proj4`,
-   ...) bundled in, none externalized — matches the original acceptance
-   bar. `core-js/stable` was dropped (no declared browser-support floor
+   compiles. All deps (`ol`, `proj4`, ...) bundled in, none externalized.
+   `core-js/stable` was dropped (no declared browser-support floor
    existed anywhere in the project). One deviation from the original bar:
    output format changed from global-var IIFE to ES module — see the hard
    rule above for why and what it breaks. `tasks/webpack.*.js` and
    `jsconfig.json` removed; `vite.config.ts`/`tsconfig.json` are the new
    source of truth.
+
+   **Caught in production, not in review:** the initial build silently
+   violated "single bundle, no code-splitting" — `ol`'s GeoTIFF/COG codec
+   support (recent "Add layer type COG" work) uses dynamic `import()`
+   internally, and Vite's bundler (Rolldown, as of `vite@8`) split those
+   into separate chunk files (`rolldown-runtime-*.mjs`, `pako.esm-*.mjs`,
+   several codec `.mjs` files) instead of inlining them. `node --check`
+   and basic load tests didn't catch this since the main file was still
+   valid JS that loaded fine on its own — only a real deploy running
+   without those extra chunk files present surfaced the 404. Fixed via
+   `build.rollupOptions.output.inlineDynamicImports: true` in
+   `vite.config.ts`. **Verification for this specific bug going forward:**
+   `grep -o 'from"\.[^"]*"' dist/origo.min.js` (or the unminified
+   equivalent with `from '...'`) must return nothing — any relative
+   import means a chunk got split out again.
 2. Interface files only: `layer.ts`, `legend.ts`, `plugin.ts`,
    `typed-emitter.ts`. Pure types + minimal runtime.
 3. Layer adapter wrapping the existing layer factory output.
