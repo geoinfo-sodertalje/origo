@@ -1,4 +1,4 @@
-import type { Layer } from './layer';
+import type { Layer } from './layer/layer';
 
 /**
  * State + events. DOM rendering is a consumer of this interface, not the

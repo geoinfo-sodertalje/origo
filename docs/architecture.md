@@ -50,9 +50,11 @@ on the new interface.
 ## Layer hierarchy
 
 Abstract base class wrapping OL layers. Subclasses per type:
-`WmsLayer extends Layer<TileLayer<TileWMS>>` (adds `getLegendGraphicUrl()`,
-`getFeatureInfoUrl(coordinate)`), `WfsLayer`, `VectorLayer`,
-`GroupLayer` (holds `children: Layer[]`).
+`WmsLayer extends Layer<TileLayer<TileWMS> | ImageLayer<ImageWMS>>` (Tile-
+or Image-backed depending on `renderMode`; adds `getLegendGraphicUrl()`,
+implements `QueryableService`), `WfsLayer`, `VectorLayer`, `WmtsLayer`
+(implements `QueryableService`), `RasterLayer`, `AgsTileLayer` (implements
+`QueryableService`), `GroupLayer` (holds `children: Layer[]`).
 
 ```typescript
 export interface LayerOptions {
@@ -64,6 +66,7 @@ export interface LayerOptions {
   minScale?: number;
   maxScale?: number;
   attribution?: string;
+  backendType?: BackendType; // see "Backend dialect" below - unconsumed today
 }
 
 export type LayerEventMap = {
@@ -78,7 +81,7 @@ export abstract class Layer<TOl extends OlBaseLayer = OlBaseLayer> {
   protected olLayer: TOl;
   private emitter = new TypedEmitter<LayerEventMap>();
 
-  abstract get type(): 'wms' | 'wfs' | 'vector' | 'wmts' | 'group';
+  abstract get type(): 'wms' | 'wfs' | 'vector' | 'wmts' | 'group' | 'raster';
 
   get visible(): boolean { return this.olLayer.getVisible(); }
   setVisible(v: boolean): void {
@@ -97,9 +100,107 @@ export abstract class Layer<TOl extends OlBaseLayer = OlBaseLayer> {
 }
 ```
 
-Migration: a factory adapter creates `Layer` wrappers from the existing
-layer factory output. Existing code that manipulates OL layers directly
-keeps working; new code goes through the wrapper.
+### Factory adapter
+
+`wrapLayer(olLayer)` (`src/api/layer/factory.ts`) creates `Layer` wrappers
+from the existing layer factory's output (`src/layer.js` +
+`src/layer/*.js`, 16 registered origo layer types). Existing code that
+manipulates OL layers directly keeps working; new code goes through the
+wrapper. Not wired into `viewer.js`'s `addLayer` yet — that's Phase 5.
+
+Dispatch key is `olLayer.get('type')` (Origo's own metadata string, e.g.
+`'WMS'`, `'GEOJSON'` — already used the same way in `viewer.js`, e.g.
+`layer.get('type') === 'GROUP'`), **not** `instanceof` on the OL class: the
+same origo type can produce different OL classes depending on `renderMode`
+(`WMS` and `AGS_MAP` can each be Tile- or Image-backed). Unrecognized or
+missing `type` logs a warning and returns `undefined` rather than throwing.
+
+| Origo `type` | Bucket | Concrete class | Notes |
+|---|---|---|---|
+| `WMS` | `wms` | `WmsLayer` | Tile- or Image-backed depending on renderMode |
+| `WFS` | `wfs` | `WfsLayer` | vector-backed under the hood, kept distinct |
+| `WMTS` | `wmts` | `WmtsLayer` | |
+| `GROUP` | `group` | `GroupLayer` | `ol/layer/Group` |
+| `GEOJSON, KML, GPX, TOPOJSON, FEATURE, AGS_FEATURE, VECTORTILE` | `vector` | `VectorLayer` | all go through `src/layer/vector.js` |
+| `XYZ, OSM, COG, AGS_MAP` | `raster` | `RasterLayer` | no query capability |
+| `AGS_TILE` | `raster` | `AgsTileLayer` | the one raster-bucket type with `QueryableService` |
+
+### `GroupLayer.children`
+
+Recursive, kept live rather than wrapped once at construction (which would
+go stale when sub-layers are added/removed later) or re-wrapped on every
+read (which breaks wrapper identity for anything holding a listener on a
+child). A private `Map<OlBaseLayer, Layer>` cache is built at construction
+by wrapping every current child (recursing into nested `GroupLayer`s
+naturally via `wrapLayer`), then kept in sync via listeners on
+`olLayer.getLayers()`'s `'add'`/`'remove'` Collection events, plus a
+`'change:layers'` listener that re-subscribes if the whole collection is
+replaced via `setLayers()`. `GroupLayer.destroy()` unsubscribes these
+listeners, recursively for nested groups — the only class this phase that
+holds live subscriptions; a `destroy()` on the `Layer` base class itself is
+likely needed once more subclasses hold state like this, not yet done.
+
+## QueryableService
+
+A second, orthogonal interface axis alongside the type-bucket hierarchy
+above — capability, not type. Covers the server-round-trip
+GetFeatureInfo/Identify request, which in the real app
+(`src/getfeatureinfo.js`'s `getGetFeatureInfoRequest`) is supported by
+exactly three raw types — `WMS`, `WMTS`, `AGS_TILE` — cutting across the
+`wms`/`wmts`/`raster` buckets; every other raster type (`XYZ, OSM, COG,
+AGS_MAP`) falls to `default: return null`. Vector-backed types get feature
+info through a completely different, already-covered path (`queryable`
+flag + `map.forEachFeatureAtPixel`, no server call), so they don't
+implement this interface.
+
+```typescript
+export interface QueryableService {
+  getFeatureInfoUrl(coordinate: Coordinate, resolution: number, projection: string): Promise<unknown[]> | undefined;
+}
+```
+
+Implemented by `WmsLayer`, `WmtsLayer`, `AgsTileLayer`. Stubbed (returns
+`undefined`) in all three until `Layer` gains a viewer/context reference —
+the real implementations need `resolution`, `projection`, and the full
+viewer (`getMapSource()` lookups, GeoServer text/html branching, or the
+ArcGIS identify URL), none of which the current `Layer` constructor
+(`options, olLayer`) has. Natural home for that context is Phase 5's scoped
+`MapApi`/`LayerApi`.
+
+## Backend dialect
+
+Origo's WMS/WFS/WMTS layers talk to different server implementations
+(GeoServer, QGIS Server, MapServer, ArcGIS) that diverge from bare OGC spec
+in vendor-specific ways. This already exists, partially and inconsistently,
+as an untyped string — `mapSource[sourceName].type` (`'Geoserver'`,
+`'QGIS'`, `'ArcGIS'`) — read ad hoc in `src/getfeatureinfo.js` (GeoServer-
+only text/html GetFeatureInfo branch) and
+`src/controls/print/print-resize.js` (resize-rule branching, with a
+URL-substring fallback when the config field is absent). No MapServer
+handling exists anywhere yet.
+
+```typescript
+export type BackendType = 'geoserver' | 'qgis' | 'mapserver' | 'arcgis' | 'ogc';
+```
+
+`'ogc'` is an explicit declaration of pure-spec/no-vendor-quirks behavior,
+distinct from leaving `backendType` unset (unknown — today's ad hoc
+fallback behavior is unaffected by this type existing). Added to
+`LayerOptions` as `backendType?: BackendType`; not yet consumed anywhere —
+`wrapLayer` doesn't set it, since raw OL layers don't carry `mapSource`
+info directly. Distinct from the existing, already-working
+`WfsSource.filterType` (`'cql'|'qgis'`, in `src/layer/wfssource.js`) — that
+remains the WFS query-filter dialect specifically; `backendType` is the
+broader concept covering GetFeatureInfo formatting and other cross-cutting
+vendor behavior, relevant once `QueryableService.getFeatureInfoUrl` gets
+its real implementation.
+
+## Backlog: clustering as a capability
+
+`styleByAttribute` and cluster options (`src/layer/vector.js`, gated to
+`WFS`/`AGS_FEATURE` sources) are another legitimate cross-cutting
+capability, structurally similar to `QueryableService`. Not scoped into
+Phase 3 — noted here for a later phase.
 
 ## Legend
 

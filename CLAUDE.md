@@ -113,7 +113,59 @@ document; if reality forces a deviation, surface it — do not improvise.
    hundreds of `.js` files) and a mixed `.js`+`.ts` directory (clean exit,
    `.ts` silently skipped, no crash). No lint script/config changes needed;
    `.ts` correctness is `npx tsc --noEmit` only, same as Phase 1.
-3. Layer adapter wrapping the existing layer factory output.
+
+   **Relocated in Phase 3:** `src/api/layer.ts` (the base `Layer` class)
+   moved to `src/api/layer/layer.ts` as part of grouping all layer-related
+   files together — see Phase 3's own retro below.
+3. **Done.** Layer adapter wrapping the existing layer factory output, in
+   its own subfolder: `src/api/layer/{layer,wms,wfs,wmts,vector,raster,
+   ags-tile,group,factory}.ts` (base `Layer` class, concrete subclasses,
+   and `factory.ts`'s `wrapLayer`). The two cross-cutting interfaces
+   (`QueryableService`, `BackendType`) live in `src/api/interfaces/`,
+   separate from the layer-domain folder, since they aren't owned by any
+   one class. `legend.ts`/`plugin.ts`/`typed-emitter.ts` stay flat at
+   `src/api/` top level for now — not enough sibling files yet to earn
+   their own folders; expect that to change once Phases 4-5 add Legend/
+   Plugin adapters.
+
+   `wrapLayer` dispatches on `olLayer.get('type')`, not `instanceof` — the
+   same origo type can produce different OL classes depending on
+   `renderMode` (e.g. WMS/AGS_MAP). Same posture as Phase 2: new code only,
+   not wired into `viewer.js`'s `addLayer` (Phase 5 territory).
+
+   **Deviations from architecture.md's original sketch, all resolved with
+   user sign-off and now reflected in the doc:** (1) the `Layer.type` union
+   only covered 5 of the real factory's 16 registered layer types — added a
+   6th bucket, `raster` (`XYZ, OSM, AGS_TILE, COG, AGS_MAP`); (2)
+   `getFeatureInfoUrl` was written as WMS-only in the doc's prose, but the
+   real capability (`src/getfeatureinfo.js:getGetFeatureInfoRequest`) is
+   shared by `WMS`, `WMTS`, and `AGS_TILE` only — pulled out into a second,
+   orthogonal `QueryableService` interface implemented by those three
+   (`AgsTileLayer` gets its own class rather than folding into `RasterLayer`
+   for exactly this reason); all three implementations are stubs returning
+   `undefined` until `Layer` has a viewer/context reference (needs
+   `resolution`/`projection`/the viewer — Phase 5 territory); (3) added a
+   typed `backendType?: BackendType` field to `LayerOptions`
+   (`'geoserver'|'qgis'|'mapserver'|'arcgis'|'ogc'`) reflecting the
+   real-but-untyped OGC server dialect already read ad hoc from
+   `mapSource[...].type` in `getfeatureinfo.js`/`print-resize.js` — not
+   consumed by anything yet, ready for when `getFeatureInfoUrl` gets its
+   real implementation.
+
+   **`GroupLayer.children`:** recursive, kept live via listeners on the OL
+   Collection's `add`/`remove` events plus a `change:layers` resubscribe
+   (not eager-once, which goes stale, nor lazy-per-read, which breaks
+   wrapper identity). `GroupLayer.destroy()` unsubscribes, recursively for
+   nested groups — flagged that the `Layer` base class will likely need its
+   own `destroy()` once more subclasses hold live state like this; not done
+   yet.
+
+   **Confirmed out of scope, not silently dropped:** clustering
+   (`styleByAttribute`, cluster options — `WFS`/`AGS_FEATURE` only) as a
+   capability interface, structurally similar to `QueryableService` — noted
+   as backlog in architecture.md. No test framework exists anywhere in the
+   repo (confirmed: no jest/vitest/mocha, no config, no `*.test.ts`); not
+   introducing one for this phase, same as Phase 2.
 4. Legend adapter wrapping the existing legend component
    (`src/controls/legend.js`, 800+ lines, plus `src/controls/legend/*`
    sub-components). It has no public groups API today — the adapter has to
@@ -128,6 +180,14 @@ document; if reality forces a deviation, surface it — do not improvise.
    ONE real plugin as proof once the facade exists.
 
 ## Backlog (not yet scheduled)
+- `src/api/` naming/location: user flagged `api/` as too generic a name for
+  what's really "the new TypeScript code area." Plan (their call, not yet
+  scheduled): rename `src/api/` to `src/ts/`, then later — once the
+  migration is far enough along that this isn't a special "new" area
+  anymore — drop that wrapper folder entirely and move its subfolders
+  (`layer/`, `interfaces/`, etc.) straight up to live under `src/` directly,
+  alongside the existing `.js` files. Do this as a deliberate rename/move
+  pass of its own, not folded silently into a content phase.
 - Centralize backend requests through a single HTTP client
   (`src/utils/http.js`), so auth tokens/headers can be injected in one
   place instead of ~30 independent `fetch()`/`XMLHttpRequest` call sites.

@@ -1,5 +1,6 @@
 import type OlBaseLayer from 'ol/layer/Base';
-import { TypedEmitter } from './typed-emitter';
+import { TypedEmitter } from '../typed-emitter';
+import type { BackendType } from '../interfaces/backend-type';
 
 export interface LayerOptions {
   name: string;
@@ -10,6 +11,12 @@ export interface LayerOptions {
   minScale?: number;
   maxScale?: number;
   attribution?: string;
+  /**
+   * OGC server dialect for this layer's source, e.g. for GetFeatureInfo
+   * formatting. 'ogc' means pure-spec/no-vendor-quirks; unset means
+   * unknown (today's ad hoc fallback behavior). Not yet consumed anywhere.
+   */
+  backendType?: BackendType;
 }
 
 export type LayerEventMap = {
@@ -20,8 +27,9 @@ export type LayerEventMap = {
 
 /**
  * Abstract base wrapping an OL layer. Subclasses per type (WmsLayer,
- * WfsLayer, VectorLayer, GroupLayer) and the factory adapter creating these
- * from existing layer factory output are Phase 3 - not implemented here.
+ * WfsLayer, VectorLayer, WmtsLayer, RasterLayer, AgsTileLayer, GroupLayer)
+ * live alongside this file; the factory adapter creating these from
+ * existing layer factory output is in layer-factory.ts.
  */
 export abstract class Layer<TOl extends OlBaseLayer = OlBaseLayer> {
   readonly name: string;
@@ -38,7 +46,7 @@ export abstract class Layer<TOl extends OlBaseLayer = OlBaseLayer> {
     this.olLayer = olLayer;
   }
 
-  abstract get type(): 'wms' | 'wfs' | 'vector' | 'wmts' | 'group';
+  abstract get type(): 'wms' | 'wfs' | 'vector' | 'wmts' | 'group' | 'raster';
 
   get visible(): boolean {
     return this.olLayer.getVisible();
