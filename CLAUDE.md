@@ -6,6 +6,21 @@ OpenLayers). Vite build. New typed internal interfaces (Layer base class,
 Legend, Plugin API, Controls, Mapcanvas, toolbars, menu, infoclick popup, footer/toolbar) implemented as **adapters over existing code** — never
 big-bang rewrites. At every intermediate step the app must remain shippable. End goal is to refactor the whole app to the new architecture.
 
+**Adapters are a first step per subsystem, not the permanent design**
+(clarified 2026-07-17). The wrapper classes (`wrapLayer`, and Legend's
+planned equivalent) exist to prove each interface contract against real
+behavior cheaply and keep the app shippable during the transition — the
+intent is that each subsystem eventually gets a real rewrite (port the
+actual logic from e.g. `src/layer/*.js` into the `.ts` file, delete the old
+file, let the adapter indirection collapse), not that the old `.js` stays
+forever behind a permanent typed facade. That rewrite should come only
+after the subsystem has test coverage (see Testing below) — this repo had
+zero tests for its entire history until the test-infrastructure work noted
+in the phase list, and a rewrite without a safety net is exactly how the
+Phase 1 COG chunk-splitting bug shipped unnoticed. The adapter-vs-rewrite
+call is made per-subsystem, informed by how the tests go — not decided
+up front for the whole app.
+
 ## Hard rules
 - `allowJs: true` in tsconfig. Never mass-convert .js files; convert only
   files we are actively touching in the current task.
@@ -48,6 +63,62 @@ big-bang rewrites. At every intermediate step the app must remain shippable. End
 Interface contracts (Layer, Legend, Plugin API) are specified in
 `docs/architecture.md`. Plans for interface work must conform to that
 document; if reality forces a deviation, surface it — do not improvise.
+
+## Testing
+**Vitest + jsdom**, added after Phase 3 (repo had zero tests before this).
+`npm run test` (one-shot) / `npm run test:watch`. Config in `vitest.config.ts`
+(deliberately separate from `vite.config.ts` — that file's build-output
+concerns, e.g. `inlineDynamicImports`, have no bearing on running tests).
+
+**jsdom is required, not optional**, for any test that constructs a real
+`Viewer` (which most meaningful tests here do, transitively — `src/layer/*.js`
+builders all take a real viewer) — `src/viewer.js` does
+`document.querySelector(target)` and expects a real DOM element. Shared
+fixture: `src/test-utils/create-test-viewer.ts`, boots a real `Viewer`
+(not `origo.js`'s full `Origo()` — controls aren't needed for layer
+construction) against a minimal-but-real config.
+
+**jsdom gotchas hit and fixed in `src/test-utils/vitest.setup.ts`** (worth
+knowing before writing more tests, e.g. for Legend, which will exercise the
+DOM/rendering path much harder):
+- No `ResizeObserver` — OL's `Map` uses one to detect target size changes.
+  Stubbed with a class whose `observe()` synchronously invokes the callback
+  once (OL's own usage ignores the callback's arguments entirely, just
+  calls `updateSize()` on any resize, so this is enough).
+- `getComputedStyle(el).borderLeftWidth` returns the unresolved keyword
+  `'medium'` for any element with no explicit border style (real browsers
+  resolve this to `'0px'` when there's no border). OL's
+  `Map.updateSize()` does `parseFloat(computedStyle.borderLeftWidth)`
+  unconditionally, and `parseFloat('medium')` is `NaN`, poisoning the
+  whole size calculation into permanently `undefined` — silently breaks
+  anything downstream that calls `map.getSize()` (e.g. `src/utils/mapsize.js`
+  throwing on `size[0]`). Fixed with a global `* { border-width: 0; padding:
+  0; }` stylesheet injected in the setup file, since the actual target
+  element is created dynamically by `Viewer`'s own `render()` — there's no
+  fixed element to style ahead of time.
+- `jsdom` offsets (`offsetWidth`/`offsetHeight`) are always `0` regardless
+  of any styling — jsdom does no real layout. This is fine for the current
+  test scope (map "works" at a `[0, 0]` reported size for construction-only
+  characterization tests) but will matter if a future test needs a
+  non-trivial map viewport size (e.g. testing render-triggered tile loading).
+- Constructing a `Viewer` directly (bypassing `origo.js`) needs a
+  `localization` control passed in explicitly — `Stylewindow` unconditionally
+  calls `.getStringByKeys` on whatever `controls.find(c => c.name ===
+  'localization')` returns, and `origo.js` normally guarantees one exists.
+  Also needs `.options` set manually on that control instance (`viewer.js`'s
+  `addControl` reads `control.options.hideWhenEmbedded` — `origin.js` sets
+  `.options` on every control after creating it, a step skipped when
+  bypassing it).
+
+**Coverage so far:** `src/layer/layer.test.ts` — one characterization test
+per Phase 3 bucket (`WMS` tile + image renderMode, `WFS`, `GEOJSON` as the
+vector-bucket representative, `OSM` as the raster-bucket representative,
+`AGS_TILE`, and `GROUP` with a nested layer, including a live-sync check
+after adding a sub-layer post-construction), each paired with a `wrapLayer()`
+assertion tying the characterization directly to Phase 3's adapter. Legend
+characterization tests are **not** written yet — deferred to whenever
+Legend work resumes, since they need the fuller `Origo()` control-wiring
+path (not just a bare `Viewer`) plus real DOM rendering of `Collapse`/`Group`.
 
 ## Migration phases (one plan/session each, merge after every phase)
 1. **Done.** Build tooling: Vite + tsconfig (`allowJs: true`), everything
@@ -163,14 +234,27 @@ document; if reality forces a deviation, surface it — do not improvise.
    **Confirmed out of scope, not silently dropped:** clustering
    (`styleByAttribute`, cluster options — `WFS`/`AGS_FEATURE` only) as a
    capability interface, structurally similar to `QueryableService` — noted
-   as backlog in architecture.md. No test framework exists anywhere in the
-   repo (confirmed: no jest/vitest/mocha, no config, no `*.test.ts`); not
-   introducing one for this phase, same as Phase 2.
+   as backlog in architecture.md. No test framework existed anywhere in the
+   repo at the time (confirmed: no jest/vitest/mocha, no config, no
+   `*.test.ts`); not introduced for this phase, same as Phase 2 — added
+   afterward, see Testing above and the entry below.
+3.5. **Done.** Test infrastructure (Vitest + jsdom) plus a first batch of
+   characterization tests against the Layer subsystem (Phase 3's adapter
+   target) — see Testing above for the full writeup and jsdom gotchas.
+   Not a numbered migration phase in the original sense (no new interface
+   contract), but load-bearing: added specifically to de-risk the
+   adapter-vs-rewrite decision before continuing to Phase 4, per the Goal
+   section's clarification above. Layer chosen over Legend as the first
+   subsystem to characterize since it needs no DOM-component rendering.
 4. Legend adapter wrapping the existing legend component
    (`src/controls/legend.js`, 800+ lines, plus `src/controls/legend/*`
    sub-components). It has no public groups API today — the adapter has to
    reconstruct `LegendGroup` state from internal DOM/component state, not
    just wrap a method. Budget more than one session if it doesn't fit.
+   **On hold** (as of the test-infrastructure work above) pending the
+   adapter-vs-rewrite decision for Layer — full design already drafted in
+   `/Users/david/.claude/plans/recursive-moseying-anchor.md` if/when this
+   resumes as planned.
 5. Plugin API v1 as a facade. Note: there is no existing plugin
    registration mechanism to adapt — no `origo.use()`, no plugin loader, no
    `plugins/` directory in this repo. Today "plugins" are separate repos a
