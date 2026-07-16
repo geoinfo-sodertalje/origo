@@ -239,11 +239,74 @@ export interface Legend {
 }
 ```
 
-First implementation: adapter wrapping the current legend component
-(`src/controls/legend.js` — no public groups API today, ~800 lines plus
-`src/controls/legend/*` sub-components), translating its `Eventer`-based
-dispatches into `LegendEventMap` emissions (see TypedEmitter above for how
-the two event systems relate).
+Implementation: `LegendAdapter` (`src/api/legend/adapter.ts`), constructed
+via `wrapLegend(legendControl, viewer)` (`src/api/legend/factory.ts`) —
+unlike `wrapLayer(olLayer)`, this needs *two* arguments, since neither
+`legend.js`'s nor `Overlays`' returned Component exposes a `getViewer()`.
+Wraps the real legend control (`src/controls/legend.js` — no public groups
+API today, ~800 lines plus `src/controls/legend/*` sub-components) with no
+changes to those files.
+
+**Reachable surface**, all read via existing return objects, none of them
+by name a "groups API":
+```
+legendControl.getOverlays().getGroups()   // flat array of every Group, any depth
+group.getOverlayList().getOverlays()      // direct child Overlay[] (pre-nested)
+group.getOverlayList().getGroups()        // direct child Group[] (pre-nested)
+overlay.getLayer()                        // raw OL layer -> feed into wrapLayer()
+```
+Root groups = `groups.filter(g => g.type === 'group' || !g.parent)` (mirrors
+`overlays.js`'s own root-vs-nested split). Hand-rolled structural types for
+this untyped surface live in `src/api/legend/raw.ts` (no `.d.ts` exists for
+`src/controls/legend*`).
+
+**Expand/collapse has no getter anywhere** — `Collapse`
+(`src/ui/collapse.js`) keeps `expanded` as a closure variable. `Group.getEl()`
+returns the `Collapse`'s own rendered div directly (`group.js`:
+`groupEl = document.getElementById(collapse.getId())`), so state is read as
+`group.getEl()?.classList.contains('expanded')`. Controlling it: `collapseGroup`
+dispatches `CustomEvent('collapse:collapse')` on that element (`Collapse`'s
+own `collapse()` no-ops safely if already collapsed); `expandGroup` has no
+forced-expand equivalent to dispatch, so it reads state first and only
+dispatches `CustomEvent('collapse:toggle')` if not already expanded. Neither
+event can be delegated from an ancestor — `Collapse.toggle()` calls
+`stopPropagation()` unless `bubble` is set, which `Group`'s `Collapse` never
+sets — so `LegendAdapter` attaches one `MutationObserver` per group's
+element (`attributeFilter: ['class']`) rather than DOM event listeners,
+specifically because `group.js`'s `tick:all`/`untick:all` handlers
+(`autoExpand`) call `collapse.expand()`/`collapse.collapse()` as **direct
+function calls**, bypassing dispatched events entirely — event listeners
+alone would silently miss those transitions. New groups added later
+(`viewer.on('add:group' | 'remove:group', ...)`) get a `MutationObserver`
+attached/detached the same way; safe by construction ordering, since
+`Overlays.onInit` registers its own `add:group` listener before any adapter
+can exist, so by the time the adapter's listener runs, the new `Group`'s
+`getEl()` is already populated.
+
+**`layer:toggle`** subscribes to each layer's native OL `change:visible`
+property event directly, not `Layer`'s own emitter — the legend's checkbox
+(`overlay.js`) calls `setVisible()` on the **raw** OL layer, never through a
+`Layer` wrapper, so `Layer`'s own `change:visible` would never fire from
+legend-UI interaction. *(General gap, not Legend-specific: `Layer` has no
+way to observe externally-mutated OL layers — noted here, not fixed.)*
+
+**`render`** bridges the old Eventer's `legendControl.on('render', ...)` to
+the adapter's own `TypedEmitter`, the same idiom as `TypedEmitter`'s own
+section above.
+
+**`getGroups()`/`getGroup()` rebuild a fresh snapshot tree on every call**
+rather than a `GroupLayer`-style live cache — cheap, and correct because
+`LegendGroup` has no `.on()` of its own, so tree-object identity doesn't
+matter the way it did for `GroupLayer.children`. One exception: a single
+`Map<OlBaseLayer, Layer>` cache inside the adapter preserves `Layer` wrapper
+identity across calls (and backs the `change:visible` listener wiring),
+without needing `GroupLayer`'s heavier Collection-listener machinery.
+
+Out of scope, not silently dropped: `VisibleOverlays` (the "show only
+visible layers" flat view, `visibleOverlays.js`) has no counterpart in this
+contract, so it isn't modeled; `src/ui/collapse.js` wasn't touched to add a
+forced-expand event or a state getter — shared primitive used by many
+controls beyond Legend.
 
 ## Plugin API
 

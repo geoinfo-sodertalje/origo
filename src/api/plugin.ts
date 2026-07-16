@@ -1,4 +1,4 @@
-import type { Legend } from './legend';
+import type { Legend } from './legend/legend';
 
 /**
  * There is no existing runtime plugin mechanism in this repo to adapt - no

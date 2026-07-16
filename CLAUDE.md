@@ -246,15 +246,28 @@ path (not just a bare `Viewer`) plus real DOM rendering of `Collapse`/`Group`.
    adapter-vs-rewrite decision before continuing to Phase 4, per the Goal
    section's clarification above. Layer chosen over Legend as the first
    subsystem to characterize since it needs no DOM-component rendering.
-4. Legend adapter wrapping the existing legend component
+4. **Done.** Legend adapter wrapping the existing legend component
    (`src/controls/legend.js`, 800+ lines, plus `src/controls/legend/*`
-   sub-components). It has no public groups API today — the adapter has to
-   reconstruct `LegendGroup` state from internal DOM/component state, not
-   just wrap a method. Budget more than one session if it doesn't fit.
-   **On hold** (as of the test-infrastructure work above) pending the
-   adapter-vs-rewrite decision for Layer — full design already drafted in
-   `/Users/david/.claude/plans/recursive-moseying-anchor.md` if/when this
-   resumes as planned.
+   sub-components), in its own subfolder: `src/api/legend/{legend,raw,
+   adapter,factory}.ts` (relocated from bare `src/api/legend.ts`, same
+   `src/api/layer/`-style grouping as Phase 3). Was on hold pending the
+   Layer adapter-vs-rewrite decision; user chose to resume this phase
+   directly instead of blocking on that decision, which is still open,
+   tracked separately. Full design and the "no public groups API today"
+   findings are written up in `docs/architecture.md`'s Legend section — the
+   short version: everything needed (group tree, layer refs, expand/collapse
+   state) is reachable through existing return objects with zero changes to
+   `src/controls/legend*`, but expand/collapse state has no getter anywhere
+   (DOM class read only) and needed a `MutationObserver` per group rather
+   than DOM event listeners, since `tick:all`/`untick:all` bypass dispatched
+   events entirely (direct `collapse.expand()`/`collapse.collapse()` calls).
+   `wrapLegend(legendControl, viewer)` needs both arguments, unlike
+   `wrapLayer(olLayer)`'s single one — no `getViewer()` anywhere to reach it
+   through the wrapped object itself. Same posture as Phases 2-3: new code
+   only, not wired into anything; no Legend-specific tests yet (see the
+   Backlog note on expanding test coverage) — deferred since it needs the
+   fuller `Origo()` control-wiring path plus real DOM rendering, unlike the
+   bare-`Viewer` tests Layer got away with.
 5. Plugin API v1 as a facade. Note: there is no existing plugin
    registration mechanism to adapt — no `origo.use()`, no plugin loader, no
    `plugins/` directory in this repo. Today "plugins" are separate repos a
@@ -264,6 +277,17 @@ path (not just a bare `Viewer`) plus real DOM rendering of `Collapse`/`Group`.
    ONE real plugin as proof once the facade exists.
 
 ## Backlog (not yet scheduled)
+- **Expand test coverage.** `src/layer/layer.test.ts` (added alongside
+  Vitest setup, see Testing above) only covers one construction-time
+  characterization test per Phase 3 bucket plus a `wrapLayer()` assertion —
+  it does not yet cover: option variations within a bucket (e.g. WMS
+  `stylePicker`/GeoServer text-html GetFeatureInfo path, WFS `filterType`
+  `cql` vs `qgis`, vector clustering), post-construction behavior beyond the
+  one live-sync group check (visibility toggling, opacity, `destroy()`
+  cleanup), or anything Legend-side (deferred until that adapter exists and
+  needs the fuller `Origo()`/DOM-rendering path anyway). Revisit and grow
+  this once there's a concrete reason to touch a given area again, rather
+  than backfilling exhaustively up front.
 - `src/api/` naming/location: user flagged `api/` as too generic a name for
   what's really "the new TypeScript code area." Plan (their call, not yet
   scheduled): rename `src/api/` to `src/ts/`, then later — once the

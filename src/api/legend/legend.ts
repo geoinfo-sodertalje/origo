@@ -1,13 +1,13 @@
-import type { Layer } from './layer/layer';
+import type { Layer } from '../layer/layer';
 
 /**
  * State + events. DOM rendering is a consumer of this interface, not the
  * interface itself, so rendering can later move to Lit without touching
  * the contract.
  *
- * First implementation: an adapter wrapping the current legend component
- * (src/controls/legend.js, no public groups API today) - Phase 4, not
- * implemented here.
+ * Implementation: LegendAdapter (./adapter.ts), constructed via
+ * wrapLegend() (./factory.ts), wrapping the real legend control
+ * (src/controls/legend.js, no public groups API today).
  */
 export interface LegendGroup {
   readonly name: string;
