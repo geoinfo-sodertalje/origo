@@ -22,6 +22,11 @@ call is made per-subsystem, informed by how the tests go — not decided
 up front for the whole app.
 
 ## Hard rules
+- **New code gets tests as part of the same unit of work, by default** —
+  don't wait to be asked each phase. Applies to every `.ts` file added under
+  `src/api/` from here on (Phase 4's Legend adapter was the first case this
+  was said explicitly for, 2026-07-17 — subsequent phases shouldn't need
+  reminding).
 - `allowJs: true` in tsconfig. Never mass-convert .js files; convert only
   files we are actively touching in the current task.
 - Existing public behavior must not change. Existing plugins and viewer
@@ -264,10 +269,23 @@ path (not just a bare `Viewer`) plus real DOM rendering of `Collapse`/`Group`.
    `wrapLegend(legendControl, viewer)` needs both arguments, unlike
    `wrapLayer(olLayer)`'s single one — no `getViewer()` anywhere to reach it
    through the wrapped object itself. Same posture as Phases 2-3: new code
-   only, not wired into anything; no Legend-specific tests yet (see the
-   Backlog note on expanding test coverage) — deferred since it needs the
-   fuller `Origo()` control-wiring path plus real DOM rendering, unlike the
-   bare-`Viewer` tests Layer got away with.
+   only, not wired into anything. **Tests added** (`src/api/legend/
+   legend.test.ts`, per the "always add tests with new code" hard rule
+   above) — needed the fuller `addControls()`/`'loaded'` flow, unlike the
+   bare-`Viewer` tests Layer got away with; see `waitForLoaded()` in
+   `src/test-utils/create-test-viewer.ts` (new: also gained
+   `createTestLocalization()` and an `extraControls` param, both needed to
+   construct a real `Legend` control for these tests — `Legend`'s factory
+   crashes at construction without a real `localization` passed in its
+   options, same underlying issue as `Stylewindow`'s). Covers: `getGroups()`
+   excluding `background`/`none`, nested-group lookup via `getGroup()`,
+   `expandGroup`/`collapseGroup` read-back, `group:expand`/`collapse` firing
+   through the `MutationObserver` (asserted with an `await Promise.resolve()`
+   since `MutationObserver` callbacks are microtask-scheduled, not
+   synchronous) including the already-expanded no-op case, and `layer:toggle`
+   firing from a raw OL `setVisible()` call (not through `Layer`'s own
+   `setVisible()` — proving the adapter doesn't miss legend-UI-driven
+   changes).
 5. Plugin API v1 as a facade. Note: there is no existing plugin
    registration mechanism to adapt — no `origo.use()`, no plugin loader, no
    `plugins/` directory in this repo. Today "plugins" are separate repos a
@@ -277,16 +295,17 @@ path (not just a bare `Viewer`) plus real DOM rendering of `Collapse`/`Group`.
    ONE real plugin as proof once the facade exists.
 
 ## Backlog (not yet scheduled)
-- **Expand test coverage.** `src/layer/layer.test.ts` (added alongside
-  Vitest setup, see Testing above) only covers one construction-time
-  characterization test per Phase 3 bucket plus a `wrapLayer()` assertion —
-  it does not yet cover: option variations within a bucket (e.g. WMS
-  `stylePicker`/GeoServer text-html GetFeatureInfo path, WFS `filterType`
-  `cql` vs `qgis`, vector clustering), post-construction behavior beyond the
-  one live-sync group check (visibility toggling, opacity, `destroy()`
-  cleanup), or anything Legend-side (deferred until that adapter exists and
-  needs the fuller `Origo()`/DOM-rendering path anyway). Revisit and grow
-  this once there's a concrete reason to touch a given area again, rather
+- **Expand test coverage further.** `src/layer/layer.test.ts` covers one
+  construction-time characterization test per Phase 3 bucket plus a
+  `wrapLayer()` assertion — missing option variations within a bucket (e.g.
+  WMS `stylePicker`/GeoServer text-html GetFeatureInfo path, WFS
+  `filterType` `cql` vs `qgis`, vector clustering) and post-construction
+  behavior beyond the one live-sync group check (opacity, `destroy()`
+  cleanup). `src/api/legend/legend.test.ts` covers the adapter's core
+  behavior (tree building, expand/collapse, both event bridges) but not
+  every `Legend`/`Group` option (`autoHide`, `exclusive` groups,
+  `visibleLayersControl`'s alternate view, drag-reorder). Revisit and grow
+  either once there's a concrete reason to touch a given area again, rather
   than backfilling exhaustively up front.
 - `src/api/` naming/location: user flagged `api/` as too generic a name for
   what's really "the new TypeScript code area." Plan (their call, not yet

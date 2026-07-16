@@ -14,19 +14,43 @@ import Localization from '../controls/localization';
  * synchronously at construction - see src/ui/component.js), so map/
  * projection/tileGrid are ready immediately after this returns. The
  * config's own `layers` option is loaded asynchronously in the background
- * (mergeSavedLayerProps(...).then(...)) - irrelevant here since tests add
- * their own layers via viewer.addLayer() after construction, so keep
- * `layers: []` in the base config to avoid unrelated async noise.
+ * (mergeSavedLayerProps(...).then(...)) - irrelevant for Layer-only tests
+ * since they add their own layers via viewer.addLayer() after construction,
+ * so keep `layers: []` in the base config to avoid unrelated async noise.
+ * Legend tests (which need addControls() to actually run) should await
+ * waitForLoaded(viewer) below instead of relying on synchronous return.
+ *
+ * @param extraControls appended after the always-included localization
+ * control (Stylewindow crashes without one) - e.g. a Legend control instance
+ * for Legend adapter tests.
  */
-export function createTestViewer(options: Record<string, unknown> = {}) {
-  document.body.innerHTML = '<div id="map"></div>';
-
-  // origo.js sets .options on every control instance after creating it
-  // (viewer.js's addControl reads control.options.hideWhenEmbedded) -
-  // replicate that single assignment since we're bypassing origo.js.
+/**
+ * origo.js sets .options on every control instance after creating it
+ * (viewer.js's addControl reads control.options.hideWhenEmbedded) -
+ * replicate that single assignment since tests bypass origo.js. Exported
+ * because other controls (e.g. Legend) need a real `localization` instance
+ * passed into their own options at construction time, before the viewer
+ * (and thus this fixture's internal one) exists.
+ */
+export function createTestLocalization() {
   const localizationOptions = { localeId: 'sv-SE' };
   const localization = Localization(localizationOptions);
   (localization as unknown as { options: unknown }).options = localizationOptions;
+  return localization;
+}
+
+export function createTestViewer(
+  options: Record<string, unknown> = {},
+  extraControls: unknown[] = []
+) {
+  document.body.innerHTML = '<div id="map"></div>';
+
+  const localization = createTestLocalization();
+
+  extraControls.forEach((control) => {
+    const c = control as { options?: unknown };
+    if (!c.options) c.options = {};
+  });
 
   const baseConfig = {
     breakPoints: {
@@ -55,7 +79,7 @@ export function createTestViewer(options: Record<string, unknown> = {}) {
       { name: 'background', title: 'Background', expanded: true }
     ],
     layers: [],
-    controls: [localization],
+    controls: [localization, ...extraControls],
     featureinfoOptions: { infowindow: 'overlay' },
     styles: {
       default: [[{ circle: { radius: 4, fill: { color: 'rgba(0,0,0,1)' } } }]]
@@ -64,4 +88,16 @@ export function createTestViewer(options: Record<string, unknown> = {}) {
 
   // eslint-disable-next-line new-cap
   return Viewer('#map', Object.assign({}, baseConfig, options));
+}
+
+/**
+ * Resolves once the viewer's async init chain finishes (addControls() has
+ * run, so viewer.getControlByName(...) can find them) - see Viewer's onInit
+ * in src/viewer.js: controls are only added inside the
+ * mergeSavedLayerProps(...).then(...) continuation, not synchronously.
+ */
+export function waitForLoaded(viewer: { on(type: string, fn: () => void): void }): Promise<void> {
+  return new Promise((resolve) => {
+    viewer.on('loaded', resolve);
+  });
 }
