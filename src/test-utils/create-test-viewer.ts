@@ -1,29 +1,7 @@
 import Viewer from '../viewer';
 import Localization from '../controls/localization';
+import LegendControl from '../controls/legend';
 
-/**
- * Boots a real Viewer (not a mock) against a minimal config, for
- * characterization tests of the real layer factory (src/layer.js +
- * src/layer/*.js), which take a real viewer and call real viewer methods
- * (getProjection, getExtent, getMapSource, ...). Calls Viewer directly, not
- * origo.js's full Origo() factory - controls aren't needed to construct
- * layers, only for control-dependent work like the Legend adapter (Phase 4,
- * not yet using this helper).
- *
- * Viewer's Component onInit runs synchronously (Component dispatches 'init'
- * synchronously at construction - see src/ui/component.js), so map/
- * projection/tileGrid are ready immediately after this returns. The
- * config's own `layers` option is loaded asynchronously in the background
- * (mergeSavedLayerProps(...).then(...)) - irrelevant for Layer-only tests
- * since they add their own layers via viewer.addLayer() after construction,
- * so keep `layers: []` in the base config to avoid unrelated async noise.
- * Legend tests (which need addControls() to actually run) should await
- * waitForLoaded(viewer) below instead of relying on synchronous return.
- *
- * @param extraControls appended after the always-included localization
- * control (Stylewindow crashes without one) - e.g. a Legend control instance
- * for Legend adapter tests.
- */
 /**
  * origo.js sets .options on every control instance after creating it
  * (viewer.js's addControl reads control.options.hideWhenEmbedded) -
@@ -39,6 +17,28 @@ export function createTestLocalization() {
   return localization;
 }
 
+/**
+ * Boots a real Viewer (not a mock) against a minimal config, for
+ * characterization tests of the real layer factory (src/layer.js +
+ * src/layer/*.js), which take a real viewer and call real viewer methods
+ * (getProjection, getExtent, getMapSource, ...). Calls Viewer directly, not
+ * origo.js's full Origo() factory - controls aren't needed to construct
+ * layers, only for control-dependent work like the Legend adapter.
+ *
+ * Viewer's Component onInit runs synchronously (Component dispatches 'init'
+ * synchronously at construction - see src/ui/component.js), so map/
+ * projection/tileGrid are ready immediately after this returns. The
+ * config's own `layers` option is loaded asynchronously in the background
+ * (mergeSavedLayerProps(...).then(...)) - irrelevant for Layer-only tests
+ * since they add their own layers via viewer.addLayer() after construction,
+ * so keep `layers: []` in the base config to avoid unrelated async noise.
+ * Legend/Plugin-API tests (which need addControls() to actually run) should
+ * await waitForLoaded(viewer) below instead of relying on synchronous
+ * return - see createReadyTestViewer() for the common case.
+ *
+ * @param extraControls appended after the always-included localization
+ * control (Stylewindow crashes without one) - e.g. a Legend control instance.
+ */
 export function createTestViewer(
   options: Record<string, unknown> = {},
   extraControls: unknown[] = []
@@ -100,4 +100,19 @@ export function waitForLoaded(viewer: { on(type: string, fn: () => void): void }
   return new Promise((resolve) => {
     viewer.on('loaded', resolve);
   });
+}
+
+/**
+ * The common case for anything needing a fully-booted viewer with a real
+ * legend control (Legend adapter tests, Plugin API tests - createOrigoApi
+ * requires one, same as wrapLegend()) - constructs, attaches a Legend
+ * control, and awaits waitForLoaded() so addControls() has actually run.
+ */
+export async function createReadyTestViewer(options: Record<string, unknown> = {}) {
+  const localization = createTestLocalization();
+  // eslint-disable-next-line new-cap
+  const legend = LegendControl({ localization, useGroupIndication: true });
+  const viewer = createTestViewer(options, [legend]);
+  await waitForLoaded(viewer);
+  return viewer;
 }

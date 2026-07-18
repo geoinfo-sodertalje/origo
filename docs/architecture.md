@@ -310,39 +310,58 @@ controls beyond Legend.
 
 ## Plugin API
 
-Note: there is no existing runtime plugin mechanism in this repo to adapt —
-no `origo.use()`, no plugin loader, no `plugins/` directory. Today
-"plugins" are separate repos a host page imports and wires up by hand,
-often monkey-patching the viewer/app instance directly (see PLUGINS.md).
-This section is net-new surface, not a wrapper over existing code.
+Implemented: `PluginRegistry` (`src/api/plugin/registry.ts`), wired into
+`origo.js` (`origo.use(plugin)` on the returned Component). Today, real
+plugins (separate repos, see PLUGINS.md) ship as a global `<script>`
+exposing a factory function, and the host page's own inline script wires
+it up by hand — full raw `viewer` access, no capability scoping, no
+teardown (confirmed by reading the reference example,
+`github.com/origo-map/barebone-plugin`). This section formalizes that into
+`origo.use(plugin)` with a real `init`/`destroy` lifecycle and a
+capability-scoped `OrigoApi` — never the raw viewer.
 
-Open design question, not yet resolved: `OrigoPlugin`/`origo.use()` below
-give plugins a typed init contract once they're registered, but don't yet
-say *how* a plugin gets discovered and loaded at runtime in a standard way
-(vs. today's ad hoc host-page wiring/monkey-patching). Worth a follow-up
-design pass — e.g. a plugin manifest file — before Phase 5 is planned in
-detail.
+**Registration/discovery is deliberately still explicit, not automatic** —
+`use()` is host-page-driven, same ergonomics as today just typed. A
+plugin-manifest/auto-discovery system remains future work, not attempted here.
+
+**Key discovery that shaped the lifecycle design:** `origo.js`'s
+`window.addEventListener('hashchange', ...)` can rebuild the viewer
+entirely (a sharemap hash change re-runs `initViewer()`, constructing a new
+`viewer` and re-dispatching `origo`'s own `'load'` event) — not previously
+documented anywhere. `PluginRegistry.onViewerChange(viewer)` handles this:
+on every viewer change (except the first, since there's nothing yet to
+tear down), every registered plugin's `destroy()` (if present, each call
+wrapped so one throwing plugin doesn't block the rest) runs against the
+outgoing api, then `init(api)` runs again with a fresh `OrigoApi` for the
+incoming viewer. A plugin registered via `use()` *after* `'load'` has
+already fired once gets `init()` called immediately against the current
+viewer, rather than left stranded until a reboot that may never come.
+Cleanup note: a hash-change reboot replaces the whole viewer DOM subtree
+wholesale (`viewer.js`'s `render()` does `el.innerHTML = htmlString`), so
+plugin-inserted elements vanish with it automatically — `destroy()` only
+needs to worry about listeners/timers registered outside that subtree.
 
 Plugins receive a capability-scoped context object, not the viewer.
 
 ```typescript
 export interface OrigoApi {
-  readonly version: string;   // semver of the plugin API surface
-  readonly map: MapApi;       // view, projection, addInteraction,
-                              // on('click' | 'movestart' | ...)
-  readonly layers: LayerApi;  // getLayer(name), getLayers(),
-                              // addLayer(def), events
+  readonly version: string;   // '1.0.0' - semver of the plugin API surface
+  readonly map: MapApi;       // getView/getProjection/addInteraction/
+                              // removeInteraction/on(click|movestart|
+                              // moveend|pointermove)/getOlMap() escape hatch
+  readonly layers: LayerApi;  // getLayer(name)/getLayers()/addLayer(def)
+                              // -> Phase 3 Layer wrappers via wrapLayer(),
+                              // on('addlayer'|'removelayer')
   readonly legend: Legend;
-  readonly ui: UiApi;         // registerControl(slot, element: HTMLElement),
-                              // panels, notifications
+  readonly ui: UiApi;         // registerControl(slot, element: HTMLElement)
   readonly config: Readonly<ViewerConfig>;
 }
 
 export interface OrigoPlugin {
   readonly name: string;
-  /** Called once when the viewer is ready. May be async. */
+  /** Called once per viewer, including after a hash-change rebuild. May be async. */
   init(api: OrigoApi): void | Promise<void>;
-  /** Teardown — must remove listeners, DOM, interactions. */
+  /** Teardown - must remove listeners/timers outside the viewer's own DOM subtree. */
   destroy?(): void;
 }
 
@@ -352,13 +371,85 @@ origo.use(myPlugin);
 
 Design decisions:
 - `init` receives everything as an argument — no globals, no
-  `viewer.getMap()...` chains. Plugins are testable against a mocked
-  `OrigoApi`.
+  `viewer.getMap()...` chains. Plugins are testable against a real
+  `createOrigoApi(viewer)` built from a test viewer (see Testing below), not
+  a hand-mocked fake.
 - Async `init` supported (plugins fetching config/capabilities need no
   ready-state hacks).
 - `ui.registerControl` takes a plain `HTMLElement`, so plugins may be
   built with Lit (or anything) while the API stays framework-agnostic.
 - API surface versioned from day one.
+
+### `MapApi`/`LayerApi` — thin wrappers, not new class hierarchies
+Both are plain object literals closing over the real `viewer`/`ol/Map`, not
+classes — a plugin needs only a narrow, capability-scoped slice of what
+already exists. `LayerApi` ties directly into Phase 3: every layer it
+returns is a real `Layer` wrapper via `wrapLayer()`, never a raw OL layer.
+`LayerApi.on('addlayer' | 'removelayer', ...)` bridges the viewer's real
+`this.dispatch('addlayer', {...})`/`this.dispatch('removelayer', {...})`
+(`src/viewer.js:455`, `:462`). `MapApi.on(...)` bridges OL's native
+`map.on/un` (which pass raw OL events) into `CustomEvent`-wrapped,
+unsubscribe-returning listeners, same shape as everywhere else in this API.
+
+### `UiApi.registerControl` — real existing slots, not an invented layout system
+Asked the user how `slot` should work, since no general layout/positioning
+system exists in Origo; they pointed at Origo's own templating.
+`src/components/main.js`'s `Main` component exposes four named,
+already-real containers via getters — `getNavigation()`, `getMapTools()`,
+`getMiscTools()`, `getBottomTools()` — and **every built-in control already
+targets one of these** by DOM id (e.g. `src/controls/zoom.js`:
+`document.getElementById(viewer.getMain().getNavigation().getId())
+.appendChild(el)`; `rotate.js` → misc tools; `editor.js`/`measure.js`/
+`draw.js`/`print`/`bookmarks`/externalurl controls → map tools;
+`scaleline.js` → bottom tools). `UiSlot = 'navigation' | 'maptools' |
+'misctools' | 'bottomtools' | 'sidebar'` routes into these same containers
+via a raw DOM `appendChild` — no Component-tree wrapping needed, matching
+exactly what every built-in control already does.
+
+`'sidebar'` delegates to `src/sidebar.js`'s **singleton** panel ("There can
+be only one sidebar in an entire page", per its own comment — shared,
+last-write-wins if more than one thing targets it) via `setContent()`.
+Two caveats specific to `'sidebar'`, not shared by the other four slots:
+(1) `insertContent()` does `el.innerHTML = content` (a string), not
+`appendChild(element)` — so only markup transfers, not the live DOM node;
+event listeners already attached via `addEventListener` do **not**
+survive, unlike the other four slots which insert the live element
+directly. (2) `#o-sidebar`'s DOM only exists if something already called
+`sidebar.init(viewer)` — normally done by `featureinfo.js` only when
+configured with `infowindow: 'sidebar'`. `createUiApi` initializes it
+lazily (checks for `#o-sidebar`, calls `sidebar.init(viewer)` if absent) so
+`registerControl('sidebar', ...)` works regardless of that configuration.
+
+A user-mentioned **per-layer toolbar** (closer to `editor.js`'s per-layer
+edit toolbar than to this viewer-level slot system) is explicitly out of
+scope for `registerControl` — a distinct, likely future capability, noted
+as backlog, not force-fit into the slot enum.
+
+### `ViewerConfig` — a real interface, not a loose placeholder
+`src/viewer.js:32-61` already destructures a full, stable set of top-level
+option keys with their own defaults — `ViewerConfig` types exactly those
+(`breakPoints`, `projectionCode`, `extent`, `center`, `zoom`, `resolutions`,
+`groups`, `layers`, `source`, `styles`, `featureinfoOptions`, etc.), all
+optional. Nested shapes (`controls`/`layers` defs, each control's own
+options, `source`/`styles` internals) stay loosely typed
+(`unknown[]`/`Record<string, unknown>`) — fully typing those is each its
+own, much bigger undertaking (every control has a different options shape;
+every layer type has different fields). `viewer.getViewerOptions()`
+(`src/viewer.js:169`) backs `OrigoApi.config` directly.
+
+### `Layer.getConfig()` — every layer exposes its config settings (Phase 3 amendment)
+Added to the base `Layer` class (`src/api/layer/layer.ts`) at the user's
+request: `getConfig(): Readonly<Record<string, unknown>>` returns
+`this.olLayer.getProperties()`. No new storage needed — the real layer
+factory (`src/layer.js` + `src/layer/*.js`) already passes its entire
+resolved options object into each OL layer's constructor (e.g. `wms.js`'s
+`tile(wmsOptions, source)` → `new TileLayer(wmsOptions)`), and OL's
+`BaseObject` retains every constructor key as a gettable property — the
+same mechanism `type`/`group`/`queryable` already rely on. Best-effort, not
+a guaranteed exact round-trip: OL consumes/transforms some keys during
+construction (`style` becomes a real OL style function, `source` becomes
+an actual `ol/source` instance) — fine for introspection, not a substitute
+for the original config literal.
 
 ## Lit conventions
 - Events out of components: `new CustomEvent(name, { detail, bubbles: true,

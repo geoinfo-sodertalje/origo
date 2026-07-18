@@ -25350,7 +25350,7 @@ var BaseLayer = class extends BaseObject {
 * @template {import("../renderer/Layer.js").default} [RendererType=import("../renderer/Layer.js").default]
 * @api
 */
-var Layer$1 = class extends BaseLayer {
+var Layer$2 = class extends BaseLayer {
 	/**
 	* @param {Options<SourceType>} options Layer options.
 	*/
@@ -25769,7 +25769,7 @@ var Property$4 = { RENDER_ORDER: "renderOrder" };
 * @template {import("../renderer/canvas/VectorLayer.js").default|import("../renderer/canvas/VectorTileLayer.js").default|import("../renderer/canvas/VectorImageLayer.js").default|import("../renderer/webgl/VectorLayer.js").default|import("../renderer/webgl/PointsLayer.js").default} RendererType
 * @api
 */
-var BaseVectorLayer = class extends Layer$1 {
+var BaseVectorLayer = class extends Layer$2 {
 	/**
 	* @param {Options<FeatureType, VectorSourceType>} [options] Options.
 	*/
@@ -26050,7 +26050,7 @@ function toStyleLike(style) {
 * @extends {BaseVectorLayer<FeatureType, VectorSourceType, CanvasVectorLayerRenderer>}
 * @api
 */
-var VectorLayer = class extends BaseVectorLayer {
+var VectorLayer$1 = class extends BaseVectorLayer {
 	/**
 	* @param {Options<VectorSourceType, FeatureType>} [options] Options.
 	*/
@@ -26210,7 +26210,7 @@ var INTERVALS = [
 * @extends {VectorLayer<VectorSource<Feature>>}
 * @api
 */
-var Graticule = class extends VectorLayer {
+var Graticule = class extends VectorLayer$1 {
 	/**
 	* @param {Options} [options] Options.
 	*/
@@ -31558,7 +31558,7 @@ var CompositeMapRenderer = class extends MapRenderer {
 * @param {import("./layer/Base.js").default} layer Layer.
 */
 function removeLayerMapProperty(layer) {
-	if (layer instanceof Layer$1) {
+	if (layer instanceof Layer$2) {
 		layer.setMapInternal(null);
 		return;
 	}
@@ -31569,7 +31569,7 @@ function removeLayerMapProperty(layer) {
 * @param {Map} map Map.
 */
 function setLayerMapProperty(layer, map) {
-	if (layer instanceof Layer$1) {
+	if (layer instanceof Layer$2) {
 		layer.setMapInternal(map);
 		return;
 	}
@@ -34840,7 +34840,7 @@ var Draw$1 = class extends PointerInteraction {
 		* @type {VectorLayer}
 		* @private
 		*/
-		this.overlay_ = new VectorLayer({
+		this.overlay_ = new VectorLayer$1({
 			source: new VectorSource({
 				useSpatialIndex: false,
 				wrapX: options.wrapX ? options.wrapX : false
@@ -35704,7 +35704,7 @@ var Extent = class extends PointerInteraction {
 		* @type {VectorLayer}
 		* @private
 		*/
-		this.extentOverlay_ = new VectorLayer({
+		this.extentOverlay_ = new VectorLayer$1({
 			source: new VectorSource({
 				useSpatialIndex: false,
 				wrapX: !!options.wrapX
@@ -35718,7 +35718,7 @@ var Extent = class extends PointerInteraction {
 		* @type {VectorLayer}
 		* @private
 		*/
-		this.vertexOverlay_ = new VectorLayer({
+		this.vertexOverlay_ = new VectorLayer$1({
 			source: new VectorSource({
 				useSpatialIndex: false,
 				wrapX: !!options.wrapX
@@ -36575,7 +36575,7 @@ var Modify = class extends PointerInteraction {
 		* @type {VectorLayer}
 		* @private
 		*/
-		this.overlay_ = new VectorLayer({
+		this.overlay_ = new VectorLayer$1({
 			source: new VectorSource({
 				useSpatialIndex: false,
 				wrapX: !!options.wrapX
@@ -37910,7 +37910,7 @@ var Select = class Select extends Interaction {
 		if (this.style_) this.applySelectedStyle_(feature);
 		if (!this.getLayer(feature)) {
 			const layer = this.getMap().getAllLayers().find(function(layer) {
-				if (layer instanceof VectorLayer && layer.getSource() && layer.getSource().hasFeature(feature)) return layer;
+				if (layer instanceof VectorLayer$1 && layer.getSource() && layer.getSource().hasFeature(feature)) return layer;
 			});
 			if (layer) this.addFeatureLayerAssociation_(feature, layer);
 		}
@@ -47652,7 +47652,7 @@ var CanvasImageLayerRenderer = class extends CanvasLayerRenderer {
 * @extends {Layer<ImageSourceType, RendererType>}
 * @api
 */
-var BaseImageLayer = class extends Layer$1 {
+var BaseImageLayer = class extends Layer$2 {
 	/**
 	* @param {Options<ImageSourceType>} [options] Layer options.
 	*/
@@ -48413,7 +48413,7 @@ var TileProperty_default = {
 * @extends {Layer<TileSourceType, RendererType>}
 * @api
 */
-var BaseTileLayer = class extends Layer$1 {
+var BaseTileLayer = class extends Layer$2 {
 	/**
 	* @param {Options<TileSourceType>} [options] Tile layer options.
 	*/
@@ -50194,7 +50194,7 @@ var WebGLPointsLayerRenderer = class extends WebGLLayerRenderer {
 * @fires import("../render/Event.js").RenderEvent#postrender
 * @deprecated Use ol/layer/WebGLVector instead
 */
-var WebGLPointsLayer = class extends Layer$1 {
+var WebGLPointsLayer = class extends Layer$2 {
 	/**
 	* @param {Options<VectorSourceType>} options Options.
 	*/
@@ -50718,7 +50718,7 @@ WebGLTileLayer.prototype.dispose;
 * @template {import('../Feature.js').FeatureLike} [FeatureType=ExtractedFeatureType<VectorSourceType>]
 * @extends {Layer<VectorSourceType, WebGLVectorLayerRenderer>}
 */
-var WebGLVectorLayer = class extends Layer$1 {
+var WebGLVectorLayer = class extends Layer$2 {
 	/**
 	* @param {Options<VectorSourceType, FeatureType>} [options] Options.
 	*/
@@ -50774,9 +50774,9 @@ var layer_exports = /* @__PURE__ */ __exportAll({
 	Group: () => LayerGroup,
 	Heatmap: () => Heatmap,
 	Image: () => ImageLayer,
-	Layer: () => Layer$1,
+	Layer: () => Layer$2,
 	Tile: () => TileLayer,
-	Vector: () => VectorLayer,
+	Vector: () => VectorLayer$1,
 	VectorImage: () => VectorImageLayer,
 	VectorTile: () => VectorTileLayer,
 	WebGLPoints: () => WebGLPointsLayer,
@@ -95521,7 +95521,7 @@ var maputils = {
 function featurelayer(features, map) {
 	let sourceLayer;
 	const featureLayerStore = new VectorSource({ features: features ? [features] : [] });
-	const featureLayer = new VectorLayer({
+	const featureLayer = new VectorLayer$1({
 		source: featureLayerStore,
 		map,
 		zIndex: 9
@@ -99943,7 +99943,7 @@ function vector(opt, src, viewer) {
 				viewer
 			});
 			options.source = source;
-			vectorLayer = new VectorLayer(options);
+			vectorLayer = new VectorLayer$1(options);
 			break;
 		case "cluster": {
 			options.clusterOptions = options.clusterOptions || {};
@@ -99966,7 +99966,7 @@ function vector(opt, src, viewer) {
 				clusterStyleName: options.clusterStyle,
 				viewer
 			});
-			vectorLayer = new VectorLayer(options);
+			vectorLayer = new VectorLayer$1(options);
 			map.on("movestart", (evt) => {
 				const mapZoom = view.getZoomForResolution(evt.frameState.viewState.resolution);
 				map.once("moveend", () => {
@@ -101009,7 +101009,7 @@ function onChangeVisible(e) {
 		if (layer.get("css")) Object.assign(document.getElementsByClassName(layer.getClassName())[0].style, layer.get("css"));
 	});
 }
-var Layer = function Layer(optOptions, viewer) {
+var Layer$1 = function Layer(optOptions, viewer) {
 	const defaultOptions = {
 		name: void 0,
 		id: void 0,
@@ -101058,7 +101058,7 @@ var Layer = function Layer(optOptions, viewer) {
 };
 function groupLayer(options, viewer) {
 	if ("layers" in options) {
-		const layers = options.layers.map((layer) => Layer(layer, viewer));
+		const layers = options.layers.map((layer) => Layer$1(layer, viewer));
 		const layerOptions = {};
 		layerOptions.layers = layers;
 		return group(Object.assign({}, options, layerOptions));
@@ -102755,7 +102755,7 @@ var Viewer = function Viewer(targetOption, options = {}) {
 			addStyle(styleId, [thisProps.styleDef]);
 			layerProps.style = styleId;
 		}
-		const layer = Layer(layerProps, this);
+		const layer = Layer$1(layerProps, this);
 		addLayerStylePicker(layerProps);
 		if (insertBefore) map.getLayers().insertAt(map.getLayers().getArray().indexOf(insertBefore), layer);
 		else map.addLayer(layer);
@@ -109018,7 +109018,7 @@ function editHandler(options, v) {
 			undoHandler = new UndoStack({ maxLength: options.maxUndoLevels });
 			reuseIds = options.reuseIds;
 			localizeFunc = options.localizeFunc;
-			traceHighligtLayer = new VectorLayer({
+			traceHighligtLayer = new VectorLayer$1({
 				group: "none",
 				source: new VectorSource(),
 				style: {
@@ -112388,7 +112388,7 @@ var Measure = function Measure({ default: defaultMeasureTool = "length", measure
 	}
 	const locLength = localize("lengthTooltip");
 	const locArea = localize("areaTooltip");
-	const vector = new VectorLayer({
+	const vector = new VectorLayer$1({
 		group: "none",
 		name: "measure",
 		title: localize("layerTitle"),
@@ -112556,7 +112556,7 @@ var Measure = function Measure({ default: defaultMeasureTool = "length", measure
 	}
 	function createSnapInteractionsRecursive(layer) {
 		const snaps = [];
-		if (layer instanceof VectorLayer) {
+		if (layer instanceof VectorLayer$1) {
 			const sn = createSnapInteractionForVectorLayer(layer);
 			if (sn) snaps.push(sn);
 		} else if (layer instanceof LayerGroup) layer.getLayers().forEach((l) => {
@@ -112571,7 +112571,7 @@ var Measure = function Measure({ default: defaultMeasureTool = "length", measure
 		else {
 			snapLayers.forEach((sl) => {
 				const l = viewer.getLayer(sl);
-				if (l instanceof VectorLayer) {
+				if (l instanceof VectorLayer$1) {
 					const sn = createSnapInteractionForVectorLayer(l);
 					if (sn) snapCollection.push(sn);
 				}
@@ -153255,7 +153255,7 @@ function PrintResize(options = {}) {
 		return !(source instanceof OSM) && !(source instanceof XYZ) && !(source instanceof WMTS);
 	};
 	const isVector = function isVector(layer) {
-		return layer instanceof VectorLayer || layer instanceof VectorImageLayer;
+		return layer instanceof VectorLayer$1 || layer instanceof VectorImageLayer;
 	};
 	const isVectorTile = function isVectorTile(layer) {
 		return layer instanceof VectorTileLayer;
@@ -158387,6 +158387,523 @@ var registerServiceWorker = (viewer, serviceWorkerFilename) => {
 	else console.error("No serviceworker");
 };
 //#endregion
+//#region src/api/typed-emitter.ts
+/**
+* Typed wrapper around the platform's native EventTarget/CustomEvent - no
+* library dependency, no separate Map-based pub/sub. Same idiom as the DOM
+* CustomEvents used at Lit component boundaries, just usable on plain
+* classes too (EventTarget doesn't require a DOM element).
+*
+* Does not replace src/ui/utils/eventer.js (on/un/dispatch, no unsubscribe
+* return), which every existing UI component already uses via
+* src/ui/component.js. Existing components keep using Eventer unmodified.
+*/
+var TypedEmitter = class extends EventTarget {
+	on(ev, fn) {
+		const listener = fn;
+		this.addEventListener(ev, listener);
+		return () => this.removeEventListener(ev, listener);
+	}
+	emit(ev, payload) {
+		this.dispatchEvent(new CustomEvent(ev, { detail: payload }));
+	}
+};
+//#endregion
+//#region src/api/layer/layer.ts
+/**
+* Abstract base wrapping an OL layer. Subclasses per type (WmsLayer,
+* WfsLayer, VectorLayer, WmtsLayer, RasterLayer, AgsTileLayer, GroupLayer)
+* live alongside this file; the factory adapter creating these from
+* existing layer factory output is in layer-factory.ts.
+*/
+var Layer = class {
+	constructor(options, olLayer) {
+		this.emitter = new TypedEmitter();
+		this.name = options.name;
+		this.title = options.title;
+		this.olLayer = olLayer;
+	}
+	get visible() {
+		return this.olLayer.getVisible();
+	}
+	setVisible(v) {
+		this.olLayer.setVisible(v);
+		this.emitter.emit("change:visible", { visible: v });
+	}
+	/** Escape hatch - typed access to the underlying OL layer */
+	getOlLayer() {
+		return this.olLayer;
+	}
+	/**
+	* Reflects whatever config survived onto the OL layer - the real layer
+	* factory (src/layer.js + src/layer/*.js) passes its entire resolved
+	* options object into each OL layer's constructor, and OL's BaseObject
+	* retains every constructor key as a gettable property (the same
+	* mechanism type/group/queryable already rely on). Best-effort, not a
+	* guaranteed exact round-trip: OL consumes/transforms some keys during
+	* construction (style becomes a real OL style function, source becomes
+	* an actual ol/source instance), so this is for introspection, not a
+	* substitute for the original config literal.
+	*/
+	getConfig() {
+		return this.olLayer.getProperties();
+	}
+	on(ev, fn) {
+		return this.emitter.on(ev, (e) => fn(e.detail));
+	}
+};
+//#endregion
+//#region src/api/layer/wms.ts
+/**
+* Wraps WMS layers produced by src/layer/wms.js - Tile- or Image-backed
+* depending on renderMode, the origo 'type' property is 'WMS' either way.
+*/
+var WmsLayer = class extends Layer {
+	get type() {
+		return "wms";
+	}
+	/** Real implementation - both TileWMS and ImageWMS expose getLegendUrl directly. */
+	getLegendGraphicUrl(resolution, params) {
+		return this.olLayer.getSource()?.getLegendUrl(resolution, params);
+	}
+	/** Stubbed until Layer gains a viewer/context reference (Phase 5) - see QueryableService. */
+	getFeatureInfoUrl(_coordinate, _resolution, _projection) {}
+};
+//#endregion
+//#region src/api/layer/wfs.ts
+/**
+* Wraps WFS layers produced by src/layer/wfs.js. Vector-backed under the
+* hood (goes through src/layer/vector.js like the 'vector' bucket types),
+* but kept as its own bucket per architecture.md.
+*/
+var WfsLayer = class extends Layer {
+	get type() {
+		return "wfs";
+	}
+};
+//#endregion
+//#region src/api/layer/wmts.ts
+/** Wraps WMTS layers produced by src/layer/wmts.js. */
+var WmtsLayer = class extends Layer {
+	get type() {
+		return "wmts";
+	}
+	/**
+	* Stubbed until Layer gains a viewer/context reference (Phase 5). The real
+	* implementation delegates to a companion 'featureinfoLayer' looked up on
+	* the viewer (see src/getfeatureinfo.js) - see QueryableService.
+	*/
+	getFeatureInfoUrl(_coordinate, _resolution, _projection) {}
+};
+//#endregion
+//#region src/api/layer/vector.ts
+/**
+* Wraps the vector-source-backed layer types: GEOJSON, KML, GPX, TOPOJSON,
+* FEATURE, AGS_FEATURE, VECTORTILE (all go through src/layer/vector.js,
+* which picks ol/layer/Vector, VectorImage, or VectorTile depending on
+* layerType/cluster/vectortile options).
+*/
+var VectorLayer = class extends Layer {
+	get type() {
+		return "vector";
+	}
+};
+//#endregion
+//#region src/api/layer/raster.ts
+/**
+* Wraps the raster/tile layer types with no GetFeatureInfo capability:
+* XYZ, OSM, COG, AGS_MAP (src/layer/{xyz,osm,cog,agsmap}.js). AGS_TILE is
+* the one raster-bucket type that IS queryable - see AgsTileLayer.
+*/
+var RasterLayer = class extends Layer {
+	get type() {
+		return "raster";
+	}
+};
+//#endregion
+//#region src/api/layer/ags-tile.ts
+/**
+* Wraps AGS_TILE layers (src/layer/agstile.js) - always Tile-backed, unlike
+* AGS_MAP which can be Tile- or Image-backed (see RasterLayer). The one
+* raster-bucket type with a GetFeatureInfo-equivalent (Identify) capability,
+* per src/getfeatureinfo.js:getGetFeatureInfoRequest.
+*/
+var AgsTileLayer = class extends Layer {
+	get type() {
+		return "raster";
+	}
+	/**
+	* Stubbed until Layer gains a viewer/context reference (Phase 5). The real
+	* implementation is an ArcGIS identify request (getAGSIdentifyUrl), not a
+	* WMS-style GetFeatureInfo - see QueryableService.
+	*/
+	getFeatureInfoUrl(_coordinate, _resolution, _projection) {}
+};
+//#endregion
+//#region src/api/layer/group.ts
+/**
+* Wraps ol/layer/Group. children is backed by a cache kept live via
+* Collection 'add'/'remove' listeners (rather than eager-once, which goes
+* stale when sub-layers are added/removed after construction, or
+* lazy-per-read, which would break wrapper identity for anything holding a
+* reference/listener on a child). A 'change:layers' listener re-subscribes
+* if the whole collection is swapped via setLayers().
+*/
+var GroupLayer = class GroupLayer extends Layer {
+	constructor(options, olLayer) {
+		super(options, olLayer);
+		this.cache = /* @__PURE__ */ new Map();
+		this.handleAdd = (e) => {
+			const wrapped = wrapLayer(e.element);
+			if (wrapped) this.cache.set(e.element, wrapped);
+		};
+		this.handleRemove = (e) => {
+			const child = this.cache.get(e.element);
+			if (child instanceof GroupLayer) child.destroy();
+			this.cache.delete(e.element);
+		};
+		this.handleChangeLayers = () => {
+			this.unsubscribeCollection();
+			this.rebuildCache();
+			this.subscribeCollection();
+		};
+		this.rebuildCache();
+		this.subscribeCollection();
+		this.olLayer.on("change:layers", this.handleChangeLayers);
+	}
+	get type() {
+		return "group";
+	}
+	get children() {
+		return Array.from(this.cache.values());
+	}
+	/** Unsubscribes this group's live listeners, recursively, for nested groups too. */
+	destroy() {
+		this.unsubscribeCollection();
+		this.olLayer.un("change:layers", this.handleChangeLayers);
+		this.cache.forEach((child) => {
+			if (child instanceof GroupLayer) child.destroy();
+		});
+		this.cache.clear();
+	}
+	rebuildCache() {
+		this.cache.clear();
+		this.olLayer.getLayers().forEach((child) => {
+			const wrapped = wrapLayer(child);
+			if (wrapped) this.cache.set(child, wrapped);
+		});
+	}
+	subscribeCollection() {
+		this.olLayer.getLayers().on("add", this.handleAdd);
+		this.olLayer.getLayers().on("remove", this.handleRemove);
+	}
+	unsubscribeCollection() {
+		this.olLayer.getLayers().un("add", this.handleAdd);
+		this.olLayer.getLayers().un("remove", this.handleRemove);
+	}
+};
+//#endregion
+//#region src/api/layer/factory.ts
+/**
+* Raw origo `type` string (olLayer.get('type')) -> concrete wrapper class.
+* AGS_TILE gets its own class rather than folding into RasterLayer because
+* it's the one raster-bucket type with GetFeatureInfo/Identify support (see
+* QueryableService); everything else in the mapping is one class per
+* architecture.md bucket.
+*/
+var RAW_TYPE_TO_CTOR = {
+	WMS: WmsLayer,
+	WFS: WfsLayer,
+	WMTS: WmtsLayer,
+	GROUP: GroupLayer,
+	GEOJSON: VectorLayer,
+	KML: VectorLayer,
+	GPX: VectorLayer,
+	TOPOJSON: VectorLayer,
+	FEATURE: VectorLayer,
+	AGS_FEATURE: VectorLayer,
+	VECTORTILE: VectorLayer,
+	XYZ: RasterLayer,
+	OSM: RasterLayer,
+	COG: RasterLayer,
+	AGS_MAP: RasterLayer,
+	AGS_TILE: AgsTileLayer
+};
+/**
+* Wraps a raw OL layer (as produced by src/layer.js's factory) in the
+* matching Layer subclass, dispatching on the origo 'type' property already
+* stamped onto it (not `instanceof` - the same origo type can produce
+* different OL classes depending on renderMode, e.g. WMS/AGS_MAP).
+* Returns undefined for unrecognized/missing types rather than throwing -
+* this must stay safe against a bad/legacy layer once it's wired into a
+* running app.
+*/
+function wrapLayer(olLayer) {
+	const rawType = olLayer.get("type");
+	const Ctor = rawType ? RAW_TYPE_TO_CTOR[rawType] : void 0;
+	if (!Ctor) {
+		console.warn(`wrapLayer: unrecognized or missing origo type "${rawType}" - skipping`);
+		return;
+	}
+	return new Ctor({
+		name: olLayer.get("name") ?? "",
+		title: olLayer.get("title") ?? ""
+	}, olLayer);
+}
+//#endregion
+//#region src/api/legend/adapter.ts
+/**
+* Wraps the real legend control (src/controls/legend.js + legend/*.js) -
+* no changes to those files. See docs/architecture.md's Legend section for
+* the reachable-surface writeup this implementation is built from.
+*/
+var LegendAdapter = class {
+	constructor(legendControl, viewer) {
+		this.emitter = new TypedEmitter();
+		this.layerCache = /* @__PURE__ */ new Map();
+		this.groupObservers = /* @__PURE__ */ new Map();
+		this.legendControl = legendControl;
+		legendControl.on("render", () => this.emitter.emit("render", {}));
+		this.allGroups().forEach((group) => this.observeGroup(group));
+		viewer.on("add:group", (evt) => {
+			const group = this.allGroups().find((g) => g.name === evt.group.name);
+			if (group) this.observeGroup(group);
+		});
+		viewer.on("remove:group", (evt) => {
+			this.groupObservers.get(evt.group.name)?.disconnect();
+			this.groupObservers.delete(evt.group.name);
+		});
+	}
+	allGroups() {
+		return this.legendControl.getOverlays().getGroups();
+	}
+	rootGroups() {
+		return this.allGroups().filter((group) => group.type === "group" || !group.parent);
+	}
+	/** No forced-expand event exists (see collapse.js) - MutationObserver catches every
+	*  transition regardless of trigger path, including the tick:all/untick:all direct
+	*  function-call path that bypasses dispatched CustomEvents entirely. */
+	observeGroup(group) {
+		const el = group.getEl();
+		if (!el) return;
+		this.groupObservers.get(group.name)?.disconnect();
+		const observer = new MutationObserver(() => {
+			const expanded = el.classList.contains("expanded");
+			this.emitter.emit(expanded ? "group:expand" : "group:collapse", { group: this.buildLegendGroup(group) });
+		});
+		observer.observe(el, {
+			attributes: true,
+			attributeFilter: ["class"]
+		});
+		this.groupObservers.set(group.name, observer);
+	}
+	wrapLayerCached(olLayer) {
+		let wrapped = this.layerCache.get(olLayer);
+		if (!wrapped) {
+			wrapped = wrapLayer(olLayer);
+			if (wrapped) {
+				this.layerCache.set(olLayer, wrapped);
+				const cachedLayer = wrapped;
+				olLayer.on("change:visible", () => {
+					this.emitter.emit("layer:toggle", {
+						layer: cachedLayer,
+						visible: olLayer.getVisible()
+					});
+				});
+			}
+		}
+		return wrapped;
+	}
+	buildLegendGroup(group) {
+		const overlayList = group.getOverlayList();
+		return {
+			name: group.name,
+			title: group.title,
+			expanded: group.getEl()?.classList.contains("expanded") ?? false,
+			layers: overlayList.getOverlays().map((overlay) => this.wrapLayerCached(overlay.getLayer())).filter((layer) => layer !== void 0),
+			groups: overlayList.getGroups().map((child) => this.buildLegendGroup(child))
+		};
+	}
+	getGroups() {
+		return this.rootGroups().map((group) => this.buildLegendGroup(group));
+	}
+	getGroup(name) {
+		const group = this.allGroups().find((g) => g.name === name);
+		return group ? this.buildLegendGroup(group) : void 0;
+	}
+	expandGroup(name) {
+		const el = this.allGroups().find((g) => g.name === name)?.getEl();
+		if (!el || el.classList.contains("expanded")) return;
+		el.dispatchEvent(new CustomEvent("collapse:toggle", {
+			bubbles: true,
+			cancelable: true
+		}));
+	}
+	collapseGroup(name) {
+		(this.allGroups().find((g) => g.name === name)?.getEl())?.dispatchEvent(new CustomEvent("collapse:collapse", {
+			bubbles: true,
+			cancelable: true
+		}));
+	}
+	expandAll() {
+		this.allGroups().forEach((group) => this.expandGroup(group.name));
+	}
+	collapseAll() {
+		this.allGroups().forEach((group) => this.collapseGroup(group.name));
+	}
+	on(ev, fn) {
+		return this.emitter.on(ev, (e) => fn(e.detail));
+	}
+};
+//#endregion
+//#region src/api/legend/factory.ts
+/**
+* Wraps an already-instantiated legend control (viewer.getControlByName
+* ('legend')) - not wired into anything automatically, same posture as
+* wrapLayer(). Unlike wrapLayer(olLayer), this needs the viewer passed in
+* separately: neither legend.js's nor Overlays' returned Component exposes
+* a getViewer(), and the viewer reference is needed for
+* viewer.on('add:group' | 'remove:group', ...).
+*/
+function wrapLegend(legendControl, viewer) {
+	return new LegendAdapter(legendControl, viewer);
+}
+//#endregion
+//#region src/api/plugin/map-api.ts
+function createMapApi(viewer) {
+	const map = viewer.getMap();
+	const eventSource = map;
+	return {
+		getView: () => map.getView(),
+		getProjection: () => map.getView().getProjection(),
+		addInteraction: (interaction) => map.addInteraction(interaction),
+		removeInteraction: (interaction) => map.removeInteraction(interaction),
+		on(event, fn) {
+			const listener = (olEvent) => fn(new CustomEvent(event, { detail: olEvent }));
+			eventSource.on(event, listener);
+			return () => eventSource.un(event, listener);
+		},
+		getOlMap: () => map
+	};
+}
+//#endregion
+//#region src/api/plugin/layer-api.ts
+/** Ties directly into Phase 3's wrapLayer - every returned Layer is a typed wrapper, never a raw OL layer. */
+function createLayerApi(viewer) {
+	return {
+		getLayer(name) {
+			const olLayer = viewer.getLayer(name);
+			return olLayer ? wrapLayer(olLayer) : void 0;
+		},
+		getLayers() {
+			return viewer.getLayers().map((olLayer) => wrapLayer(olLayer)).filter((layer) => layer !== void 0);
+		},
+		addLayer(def) {
+			return wrapLayer(viewer.addLayer(def));
+		},
+		on(event, fn) {
+			const listener = (data) => fn(new CustomEvent(event, { detail: data }));
+			viewer.on(event, listener);
+			return () => viewer.un(event, listener);
+		}
+	};
+}
+//#endregion
+//#region src/api/plugin/ui-api.ts
+/**
+* Routes into Origo's real, already-existing UI containers - the same
+* ones every built-in control targets (e.g. src/controls/zoom.js:
+* `document.getElementById(viewer.getMain().getNavigation().getId())
+* .appendChild(el)`). No layout system invented; 'sidebar' delegates to
+* src/sidebar.js's singleton panel (shared - last write wins, same
+* constraint the real sidebar already has for everyone).
+*
+* Caveat specific to 'sidebar', not shared by the other four slots:
+* sidebar.js's insertContent() does `el.innerHTML = content` (a string),
+* not appendChild(element) - so registerControl('sidebar', element) only
+* transfers markup, not the live DOM node. Event listeners already
+* attached to `element` via addEventListener do NOT survive; a plugin
+* targeting 'sidebar' must (re)bind behavior after insertion (e.g. via
+* event delegation on a stable ancestor, or by looking its element back
+* up from the DOM by id/class after calling registerControl). The other
+* four slots insert the live element directly and have no such caveat.
+*
+* Second caveat: sidebar.js's #o-sidebar DOM only exists if something has
+* already called sidebar.init(viewer) - normally done by featureinfo.js
+* only when configured with `infowindow: 'sidebar'`. A viewer without that
+* configured has no #o-sidebar element yet, and sidebar.setContent() would
+* throw (querySelector returns null, then `.innerHTML =` on it throws).
+* Initialize it lazily here so registerControl('sidebar', ...) works
+* regardless of featureinfo's own configuration.
+*/
+function createUiApi(viewer) {
+	return { registerControl(slot, element) {
+		if (slot === "sidebar") {
+			if (!document.getElementById("o-sidebar")) sidebar_default.init(viewer);
+			sidebar_default.setContent({ content: element.outerHTML });
+			return;
+		}
+		const main = viewer.getMain();
+		const containerId = {
+			navigation: main.getNavigation().getId(),
+			maptools: main.getMapTools().getId(),
+			misctools: main.getMiscTools().getId(),
+			bottomtools: main.getBottomTools().getId()
+		}[slot];
+		document.getElementById(containerId)?.appendChild(element);
+	} };
+}
+//#endregion
+//#region src/api/plugin/factory.ts
+var PLUGIN_API_VERSION = "1.0.0";
+/** Composes the capability-scoped OrigoApi a plugin actually receives - never the raw viewer. */
+function createOrigoApi(viewer) {
+	const legendControl = viewer.getControlByName("legend");
+	if (!legendControl) throw new Error("createOrigoApi: no \"legend\" control configured on this viewer - Phase 5 requires one, same as wrapLegend()");
+	return {
+		version: PLUGIN_API_VERSION,
+		map: createMapApi(viewer),
+		layers: createLayerApi(viewer),
+		legend: wrapLegend(legendControl, viewer),
+		ui: createUiApi(viewer),
+		config: viewer.getViewerOptions()
+	};
+}
+//#endregion
+//#region src/api/plugin/registry.ts
+/**
+* Implements origo.use(plugin) with a real init/destroy lifecycle.
+* Plugin lifecycle is viewer-scoped: origo.js can rebuild the viewer
+* entirely (a sharemap hash change re-runs initViewer() and re-dispatches
+* origo's 'load' event with a new viewer instance) - on every such change,
+* every registered plugin's destroy() (if present) is called against the
+* outgoing viewer, then init() is called again with a fresh OrigoApi for
+* the incoming one. A plugin registered via use() after 'load' has already
+* fired once gets init() called immediately against the current viewer,
+* rather than left stranded until a reboot that may never come.
+*/
+var PluginRegistry = class {
+	constructor() {
+		this.plugins = [];
+		this.activeApi = null;
+	}
+	use(plugin) {
+		this.plugins.push(plugin);
+		if (this.activeApi) plugin.init(this.activeApi);
+	}
+	onViewerChange(viewer) {
+		if (this.activeApi) this.plugins.forEach((plugin) => {
+			try {
+				plugin.destroy?.();
+			} catch (error) {
+				console.error(`PluginRegistry: "${plugin.name}".destroy() threw`, error);
+			}
+		});
+		this.activeApi = createOrigoApi(viewer);
+		this.plugins.forEach((plugin) => plugin.init(this.activeApi));
+	}
+};
+//#endregion
 //#region origo.js
 var Origo = function Origo(configPath, options = {}) {
 	/** Reference to the returned Component */
@@ -158470,6 +158987,7 @@ var Origo = function Origo(configPath, options = {}) {
 	};
 	const api = () => viewer;
 	const getConfig = () => origoConfig;
+	const pluginRegistry = new PluginRegistry();
 	api.controls = () => controls_exports;
 	api.extensions = () => extensions_exports;
 	/** Helper that initialises a new viewer  */
@@ -158484,6 +159002,7 @@ var Origo = function Origo(configPath, options = {}) {
 			viewer = Viewer(target, viewerOptions);
 			viewer.on("loaded", () => {
 				origo.dispatch("load", viewer);
+				pluginRegistry.onViewerChange(viewer);
 			});
 		}).catch((error) => console.error(error));
 	};
@@ -158493,6 +159012,7 @@ var Origo = function Origo(configPath, options = {}) {
 	return Component({
 		api,
 		getConfig,
+		use: pluginRegistry.use.bind(pluginRegistry),
 		onInit() {
 			const defaultConfig = Object.assign({}, origoConfig, options);
 			const base = document.createElement("base");

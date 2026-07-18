@@ -192,4 +192,24 @@ describe('layer factory characterization', () => {
 
     expect(wrapLayer(layer)).toBeUndefined();
   });
+
+  it('getConfig() reflects real constructor options (Phase 5 addition)', () => {
+    const viewer = createTestViewer();
+    const layer = viewer.addLayer({
+      name: 'wms-tile',
+      title: 'WMS Tile',
+      group: 'root',
+      opacity: 0.5,
+      source: 'local',
+      id: 'wms_tile_id',
+      type: 'WMS'
+    });
+
+    const wrapped = wrapLayer(layer);
+    const config = wrapped?.getConfig();
+
+    expect(config?.group).toBe('root');
+    expect(config?.opacity).toBe(0.5);
+    expect(config?.type).toBe('WMS');
+  });
 });

@@ -286,13 +286,43 @@ path (not just a bare `Viewer`) plus real DOM rendering of `Collapse`/`Group`.
    firing from a raw OL `setVisible()` call (not through `Layer`'s own
    `setVisible()` — proving the adapter doesn't miss legend-UI-driven
    changes).
-5. Plugin API v1 as a facade. Note: there is no existing plugin
-   registration mechanism to adapt — no `origo.use()`, no plugin loader, no
-   `plugins/` directory in this repo. Today "plugins" are separate repos a
-   host page imports and wires up by hand (see PLUGINS.md). So this phase
-   is net-new surface, not an adapter over existing code — treat the "never
-   big-bang" rule as applying to the rest of the app, not this phase. Port
-   ONE real plugin as proof once the facade exists.
+5. **Done.** Plugin API v1 as a facade — `origo.use(plugin)` via
+   `PluginRegistry` (`src/api/plugin/registry.ts`), wired into `origo.js`
+   (~6 lines: one import, one `new PluginRegistry()`, one `use` property on
+   the returned Component, one `pluginRegistry.onViewerChange(viewer)` call
+   inside the existing `viewer.on('loaded', ...)` handler) — the only file
+   this phase touched outside `src/api/plugin/`, since there was no
+   existing mechanism to adapt over (net-new surface, per the plan).
+   `src/api/plugin/{plugin,raw,map-api,layer-api,ui-api,factory,registry}.ts`
+   plus `examples/hello-plugin.ts` (proof plugin, not a copy of the
+   external barebone-plugin — different repo/license). Full writeup,
+   including the real UI slots discovery and the config/getConfig
+   amendments, is in `docs/architecture.md`'s Plugin API section — short
+   version:
+   - **Viewer-rebuild lifecycle** (found reading `origo.js`, not previously
+     documented anywhere): a sharemap hash change can rebuild the viewer
+     entirely. Confirmed with user: `destroy()` + fresh `init()` on every
+     viewer change (except the first — nothing to destroy yet), each
+     `destroy()` call isolated so one throwing plugin doesn't block the
+     rest; a plugin registered via `use()` after `'load'` already fired
+     once gets `init()` immediately, not stranded until the next reboot.
+   - **`UiApi.registerControl`'s slots are real, not invented** — asked the
+     user, who pointed at Origo's own templating; traced it to
+     `src/components/main.js`'s four named containers, which every
+     built-in control already targets the same way. `'sidebar'` needed a
+     lazy-init fix (`sidebar.js`'s DOM doesn't exist unless
+     `featureinfo.js`'s sidebar mode already created it) and has a real
+     caveat (string-based `innerHTML` insertion loses live event listeners,
+     unlike the other four slots) — both caught by tests before shipping.
+   - **`ViewerConfig` widened to a real interface** and **`Layer.getConfig()`
+     added** (`src/api/layer/layer.ts`, a small Phase-3 amendment — delegates
+     to `olLayer.getProperties()`, no new storage needed) — both per explicit
+     user request mid-phase, not originally planned.
+   - **Tests caught two real bugs before they shipped**: the registry
+     originally called every plugin's `destroy()` on the very first
+     viewer too (nothing to tear down yet); `registerControl('sidebar',
+     ...)` originally threw on any viewer without sidebar-mode featureinfo
+     configured (`#o-sidebar` didn't exist yet).
 
 ## Backlog (not yet scheduled)
 - **Expand test coverage further.** `src/layer/layer.test.ts` covers one

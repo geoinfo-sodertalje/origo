@@ -33,6 +33,7 @@ import Spinner from './src/utils/spinner';
 import layerType from './src/layer/layertype';
 import mapUtils from './src/maputils';
 import registerServiceWorker from './src/utils/registerserviceworker';
+import { PluginRegistry } from './src/api/plugin/registry';
 
 const Origo = function Origo(configPath, options = {}) {
   /** Reference to the returned Component */
@@ -128,6 +129,7 @@ const Origo = function Origo(configPath, options = {}) {
 
   const api = () => viewer;
   const getConfig = () => origoConfig;
+  const pluginRegistry = new PluginRegistry();
 
   api.controls = () => origoControls;
   api.extensions = () => origoExtensions;
@@ -148,6 +150,7 @@ const Origo = function Origo(configPath, options = {}) {
         viewer.on('loaded', () => {
           // Inform listeners that there is a new Viewer in town
           origo.dispatch('load', viewer);
+          pluginRegistry.onViewerChange(viewer);
         });
       })
       .catch(error => console.error(error));
@@ -165,6 +168,7 @@ const Origo = function Origo(configPath, options = {}) {
   return ui.Component({
     api,
     getConfig,
+    use: pluginRegistry.use.bind(pluginRegistry),
     onInit() {
       const defaultConfig = Object.assign({}, origoConfig, options);
       const base = document.createElement('base');

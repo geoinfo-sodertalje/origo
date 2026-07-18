@@ -62,6 +62,21 @@ export abstract class Layer<TOl extends OlBaseLayer = OlBaseLayer> {
     return this.olLayer;
   }
 
+  /**
+   * Reflects whatever config survived onto the OL layer - the real layer
+   * factory (src/layer.js + src/layer/*.js) passes its entire resolved
+   * options object into each OL layer's constructor, and OL's BaseObject
+   * retains every constructor key as a gettable property (the same
+   * mechanism type/group/queryable already rely on). Best-effort, not a
+   * guaranteed exact round-trip: OL consumes/transforms some keys during
+   * construction (style becomes a real OL style function, source becomes
+   * an actual ol/source instance), so this is for introspection, not a
+   * substitute for the original config literal.
+   */
+  getConfig(): Readonly<Record<string, unknown>> {
+    return this.olLayer.getProperties();
+  }
+
   on<K extends keyof LayerEventMap & string>(
     ev: K,
     fn: (e: LayerEventMap[K]) => void
